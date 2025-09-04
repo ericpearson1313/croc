@@ -314,6 +314,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	// Read Address generation
 
 	logic [31:0] read_addr;
+	logic [1:0] read_addr_lsb;
 	logic [31:0] byte_cnt;
 	logic addr_busy;
 	logic [2:0]  full; // cannot issue further requests
@@ -325,10 +326,12 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 			addr_busy <= 0;
 			byte_cnt <= 0;
 			read_addr <= 0;
+			read_addr_lsb <= 0;
 			first_flag <= 0;
 		end else begin
 			if( arvalid && arready ) begin // dma command start addresss recevied
 				read_addr <= araddr;
+				read_addr_lsb <= araddr[1:0];
 				byte_cnt <= arlen;
 				addr_busy <= 1; // we are busy requesgin
 				first_flag <= ( araddr[1:0] != 0) ? 1'b1 : 1'b0; // will skip first flag output word
@@ -373,7 +376,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	assign full = (oust >= 2) ? 1'b1 : 1'b0; // ToDo figure out extra word
 	
 	// AXI RA bus outputs
-	assign arready = ( addr_busy || oust ) ? 1'b0 : 1'b1;;
+	assign arready = ( addr_busy /*|| oust*/ ) ? 1'b0 : 1'b1;;
 	// Fifo to match until read data received
 		// not clear what data we need yet
 		// look into home rolled.
@@ -417,8 +420,8 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	always_ff @(posedge clk_i) begin
 		if( mgr_rsp_i.rvalid ) begin // receive data
 			// memory read data
-			in_reg[3:0] <= mgr_rsp_i.r.rdata;
-			in_reg[6:4] <= in_reg[2:0]; // shift in 3 prev bytes
+			in_reg[6:3] <= mgr_rsp_i.r.rdata;
+			in_reg[2:0] <= in_reg[6:4]; // shift in 3 prev bytes
 		end
 	end
 
@@ -427,10 +430,10 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	logic out_load;
 	always_ff @(posedge clk_i) begin
 		if( out_load ) begin
-			out_reg[31:0] <= ( read_addr[1:0]==0 ) ? in_reg[3:0] :
-			                 ( read_addr[1:0]==1 ) ? in_reg[4:1] :
-			                 ( read_addr[1:0]==2 ) ? in_reg[5:2] :
-			                 /*read_addr[1:0]==3 )*/ in_reg[6:3];
+			out_reg[31:0] <= ( read_addr_lsb[1:0]==0 ) ? in_reg[6:3] :
+			                 ( read_addr_lsb[1:0]==1 ) ? in_reg[3:0] :
+			                 ( read_addr_lsb[1:0]==2 ) ? in_reg[4:1] :
+			                 /*read_addr_lsb[1:0]==3 )*/ in_reg[5:2] ;
 		end
 	end
 
@@ -441,7 +444,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	// flags are valid,first,last
 
 	logic skip_first_flag;
-	assign skip_first_flag = ( first_1 && !last_1 && read_addr[1:0] != 0 ) ? 1'b1 : 1'b0;
+	assign skip_first_flag = ( first_1 && !last_1 && read_addr_lsb[1:0] != 0 ) ? 1'b1 : 1'b0;
 	logic valid_0, valid_1;
 	always_ff @(posedge clk_i) begin
 		if( !rst_ni ) begin
