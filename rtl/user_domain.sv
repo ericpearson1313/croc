@@ -241,7 +241,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
 	// latch the stream output to get the read data word
 	always_ff @(posedge clk_i) 
-		dma_read_data <= ( rst_ni ) ? 0 : ( axi_wvalid ) ? axi_wdata : dma_read_data;
+		dma_read_data <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? axi_wdata : dma_read_data;
 	
 
   	ascon_read_dma _key_r (
@@ -444,9 +444,9 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	assign skip_first_flag = ( first_1 && !last_1 && read_addr[1:0] != 0 ) ? 1'b1 : 1'b0;
 	logic valid_0, valid_1;
 	always_ff @(posedge clk_i) begin
-		if( rst_ni ) begin
+		if( !rst_ni ) begin
 			valid_0 <= 0;
-			valid_1 <= 1;
+			valid_1 <= 0;
 		end else begin
 			valid_0 <= ( mgr_rsp_i.rvalid ) ? 1'b1 : // always accepts data
 				   ( !valid_1 ) ? 1'b0 : // will pass on data, but still always accepts

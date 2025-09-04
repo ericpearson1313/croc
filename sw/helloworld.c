@@ -76,8 +76,10 @@ int main() {
     printf( "dma run start\n");
     uart_write_flush();
     *((long *)0x20000004) = cmd[7]; 
-    printf( "dma run done\n");
+    printf( "dma 0 run done\n");
     printf( "RDATA = %x\n", *((long *)0x20000004) );
+    *((long *)0x20000004) = (long)(((char *)cmd[7])+4); 
+    printf( "dma 1 run done\n");
     printf( "RDATA = %x\n", *((long *)0x20000004) );
     uart_write_flush();
     
