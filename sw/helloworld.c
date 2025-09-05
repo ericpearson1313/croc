@@ -74,21 +74,11 @@ int main() {
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
     printf( "RDATA = %x\n", *((long *)0x20000004) );
     printf( "dma run start\n");
-
-    *((long *)0x20000004) = (long)(((char *)cmd[7])+0); 
-    printf("Offset = 0 pre\n" ); // delay to make sure its done
-    printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
-    *((long *)0x20000004) = (long)(((char *)cmd[7])+4); 
-    printf("Offset = 4 pre\n" ); // delay to make sure its done
-    printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
     for( int ii = 0 ; ii < 6; ii++ ) {
     	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read of 4 bytes from provided byte address
 	printf("Offset = %x\n", ii ); // delay to make sure its done
     	printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
     }
-    *((long *)0x20000004) = (long)(((char *)cmd[7])+0); 
-    printf("Offset = 0 again\n" ); // delay to make sure its done
-    printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
     uart_write_flush();
     
 // uart loopback

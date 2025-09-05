@@ -202,17 +202,37 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
   	ascon_write_dma _auth_w (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
-		.testmode_i	( testmost_i ),
+		.testmode_i	( testmode_i ),
+		// OBI bus
     		.mgr_req_o   	( mgr_req_o[0] ),
-    		.mgr_rsp_i   	( mgr_rsp_i[0] )
+    		.mgr_rsp_i   	( mgr_rsp_i[0] ),
+		// input dma write address, length (bytes)
+		.awvalid	( 1'b0 ), 
+		.awready	( ),
+		.awaddr		( 0 ),
+		.awlen		( 4 ), 
+		// axi read word stream input
+		.rvalid		( 1'b0 ),
+		.rready		( ),
+		.rdata		( 32'h0 )
 	);
 
   	ascon_write_dma _bdo_w (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
-		.testmode_i	( testmost_i ),
+		.testmode_i	( testmode_i ),
+		// OBI bus
     		.mgr_req_o   	( mgr_req_o[1] ),
-    		.mgr_rsp_i   	( mgr_rsp_i[1] )
+    		.mgr_rsp_i   	( mgr_rsp_i[1] ),
+		// input dma write address, length (bytes)
+		.awvalid	( 1'b0 ), 
+		.awready	( ),
+		.awaddr		( 0 ),
+		.awlen		( 4 ), 
+		// axi read word stream input
+		.rvalid		( 1'b0 ),
+		.rready		( ),
+		.rdata		( 32'h0 )
 	);
 
 	
@@ -222,7 +242,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
   	ascon_read_dma _cmd_r (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
-		.testmode_i	( testmost_i ),
+		.testmode_i	( testmode_i ),
 		// OBI bus
     		.mgr_req_o   	( mgr_req_o[2] ),
     		.mgr_rsp_i   	( mgr_rsp_i[2] ),
@@ -247,17 +267,41 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
   	ascon_read_dma _key_r (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
-		.testmode_i	( testmost_i ),
+		.testmode_i	( testmode_i ),
+		// OBI bus
     		.mgr_req_o   	( mgr_req_o[3] ),
-    		.mgr_rsp_i   	( mgr_rsp_i[3] )
+    		.mgr_rsp_i   	( mgr_rsp_i[3] ),
+		// input dma address, length (bytes)
+		.arvalid	( 1'b0 ), 
+		.arready	( ),
+		.araddr		( 0 ),
+		.arlen		( 4 ), 
+		// axi Write data word stream output 
+		.wvalid		( ),
+		.wready		( 1'b0 ),
+		.wdata		( ),
+		.wbe		( ),
+		.wlast		( )
 	);
 
   	ascon_read_dma _bdi_r (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
-		.testmode_i	( testmost_i ),
-    		.mgr_req_o   	( mgr_req_o[3] ),
-    		.mgr_rsp_i   	( mgr_rsp_i[3] )
+		.testmode_i	( testmode_i ),
+		// OBI bus
+    		.mgr_req_o   	( mgr_req_o[4] ),
+    		.mgr_rsp_i   	( mgr_rsp_i[4] ),
+		// input dma address, length (bytes)
+		.arvalid	( 1'b0 ), 
+		.arready	( ),
+		.araddr		( 0 ),
+		.arlen		( 4 ), 
+		// axi Write data word stream output 
+		.wvalid		( ),
+		.wready		( 1'b0 ),
+		.wdata		( ),
+		.wbe		( ),
+		.wlast		( )
 	);
 endmodule
  
@@ -277,12 +321,14 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	input 	[31:0] 	awaddr,
 	input 	[31:0] 	awlen,
 	// Write data stream input
-	output		wready,
-	input		wvalid,
-	input 	[31:0]	wdata
+	output		rready,
+	input		rvalid,
+	input 	[31:0]	rdata
   	);
 
-	// tie off requst port
+	// Tie off ports
+	assign awready = 0;
+	assign rready = 0;
 	assign mgr_req_o = 0;
 endmodule
 
@@ -334,7 +380,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 				read_addr_lsb <= araddr[1:0];
 				byte_cnt <= arlen;
 				addr_busy <= 1; // we are busy requesgin
-				first_flag <= ( araddr[1:0] != 0) ? 1'b1 : 1'b0; // will skip first flag output word
+				first_flag <= 1'b1; 
 			end else if( addr_busy && mgr_req_o.req && mgr_rsp_i.gnt ) begin // addr transfer
 				first_flag <= 0;
 				if ( byte_cnt + read_addr[1:0]  <= 4 ) begin // our last transfer
@@ -380,6 +426,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	// Fifo to match until read data received
 		// not clear what data we need yet
 		// look into home rolled.
+	logic first_read, last_read;
 	fifo_v3 #(
     		.DEPTH        ( 3 ),
     		.FALL_THROUGH ( 1'b0 ),
@@ -444,7 +491,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	// flags are valid,first,last
 
 	logic skip_first_flag;
-	assign skip_first_flag = ( first_1 && !last_1 && read_addr_lsb[1:0] != 0 ) ? 1'b1 : 1'b0;
+	assign skip_first_flag = ( valid_1 && first_1 && !last_1 && read_addr_lsb[1:0] != 0 ) ? 1'b1 : 1'b0;
 	logic valid_0, valid_1;
 	always_ff @(posedge clk_i) begin
 		if( !rst_ni ) begin
@@ -482,7 +529,10 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	assign wlast = last_1;
 	assign wbe = ( last_1 ) ? last_be : 4'b1111;
 	assign wvalid = valid_1 && !skip_first_flag;
-	assign wdata = out_reg;
+	assign wdata = { ( wbe[3] ) ? out_reg[31:24] : 8'h00,
+			( wbe[2] ) ? out_reg[23:16] : 8'h00,
+			( wbe[1] ) ? out_reg[15:08] : 8'h00,
+			( wbe[0] ) ? out_reg[07:00] : 8'h00 };
 
 
 endmodule
