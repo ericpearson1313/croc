@@ -181,18 +181,34 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
   	logic [SbrObiCfg.IdWidth-1:0] rid;
 	logic rvalid; 
-	logic raddr;
+	logic [9:0] raddr;
 	always @(posedge clk_i) begin
-		raddr  <= (sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.addr[2] : raddr; // word regs 0 and 1
+		raddr  <= (sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.addr[11:2] : raddr; // word regs addr
 		rvalid <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? 1'b1 : 1'b0;
 		rid    <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.aid : rid;
 	end
+
+	// length register (3)
+	logic [31:0] length;
+	always_ff @(posedge clk_i) begin
+		if( !rst_ni )
+			length <= 4; // default 1 word
+		else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==4 ) 
+			length <= sbr_req_i.a.wdata;
+	end
 	
 	// formulate the response
+	logic [2:0][31:0] dma_read_data;
 	always_comb begin
 	    	sbr_rsp_o 		= '0;
     		sbr_rsp_o.gnt      	= 1'b1; // non blocking
-    		sbr_rsp_o.r.rdata 	= ( raddr==1 ) ? dma_read_data : magic;
+    		sbr_rsp_o.r.rdata 	= 
+					  ( raddr==0 ) ? magic :
+					  ( raddr==1 ) ? dma_read_data[0] : 
+    		                    	  ( raddr==2 ) ? dma_read_data[1] : 
+    		                    	  ( raddr==3 ) ? dma_read_data[2] : 
+					  ( raddr==4 ) ? length :
+                                                         32'hdeadbeef;
     		sbr_rsp_o.r.rid   	= rid;
     		sbr_rsp_o.rvalid   	= rvalid; 
     	end
@@ -236,7 +252,6 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	);
 
 	
-	logic [31:0] dma_read_data;
 	logic [31:0] axi_wdata;
 	logic axi_wvalid;
   	ascon_read_dma _cmd_r (
@@ -247,10 +262,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		.mgr_req_o   	( mgr_req_o[2] ),
     		.mgr_rsp_i   	( mgr_rsp_i[2] ),
 		// input dma address, length (bytes)
-		.arvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[3:2]==1 ), // wr addr 0x4
+		.arvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==1 ), // wr addr 0x4
 		.arready	( ),
 		.araddr		( sbr_req_i.a.wdata ),
-		.arlen		( 4 ), // read a word
+		.arlen		( length ), // read a word
 		// axi Write data word stream output 
 		.wvalid		( axi_wvalid ),
 		.wready		( 1'b1 ),
@@ -260,8 +275,11 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	);
 
 	// latch the stream output to get the read data word
-	always_ff @(posedge clk_i) 
-		dma_read_data <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? axi_wdata : dma_read_data;
+	always_ff @(posedge clk_i) begin
+		dma_read_data[0] <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? axi_wdata : dma_read_data[0];
+		dma_read_data[1] <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? dma_read_data[0] : dma_read_data[1];
+		dma_read_data[2] <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? dma_read_data[1] : dma_read_data[2];
+	end
 	
 
   	ascon_read_dma _key_r (

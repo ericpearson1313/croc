@@ -73,11 +73,69 @@ int main() {
     printf( "CT long = %x\n", ((long *)cmd[7])[0] );
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
     printf( "RDATA = %x\n", *((long *)0x20000004) );
-    printf( "dma run start\n");
+/*
+    printf( "dma len 4 \n");
     for( int ii = 0 ; ii < 6; ii++ ) {
     	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read of 4 bytes from provided byte address
 	printf("Offset = %x\n", ii ); // delay to make sure its done
     	printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
+    }
+    printf( "dma len 3 \n");
+    *((long *)0x20000010) = 3;
+    for( int ii = 0 ; ii < 7; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
+    }
+    printf( "dma len 2 \n");
+    *((long *)0x20000010) = 2;
+    for( int ii = 0 ; ii < 8; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
+    }
+    printf( "dma len 1 \n");
+    *((long *)0x20000010) = 1;
+    for( int ii = 0 ; ii < 9; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x\n", *((long *)0x20000004) ); // return the value of the last DMA (4 bytes)
+    }
+    printf( "dma len 5 \n");
+    *((long *)0x20000010) = 5;
+    for( int ii = 0 ; ii < 5; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x %x\n", *((long *)0x20000004),*((long *)0x20000008) ); // return the value of the last DMA (8 bytes)
+    }
+    printf( "dma len 6 \n");
+    *((long *)0x20000010) = 6;
+    for( int ii = 0 ; ii < 4; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x %x\n", *((long *)0x20000004),*((long *)0x20000008) ); // return the value of the last DMA (8 bytes)
+    }
+    printf( "dma len 7 \n");
+    *((long *)0x20000010) = 7;
+    for( int ii = 0 ; ii < 3; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x %x\n", *((long *)0x20000004),*((long *)0x20000008) ); // return the value of the last DMA (8 bytes)
+    }
+*/
+    printf( "dma len 8 \n");
+    *((long *)0x20000010) = 8;
+    for( int ii = 0 ; ii < 2; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x %x %x\n", *((long *)0x20000004),*((long *)0x20000008),*((long *)0x2000000C) ); // return the value of the last DMA (8 bytes)
+    }
+    printf( "dma len 9 \n");
+    *((long *)0x20000010) = 9;
+    for( int ii = 0 ; ii < 2; ii++ ) {
+    	*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read
+	printf("Offset = %x\n", ii ); // delay to make sure its done
+    	printf( "RDATA = %x %x %x\n", *((long *)0x20000004),*((long *)0x20000008),*((long *)0x2000000C) ); // return the value of the last DMA (8 bytes)
     }
     uart_write_flush();
     
