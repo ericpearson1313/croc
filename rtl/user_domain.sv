@@ -380,6 +380,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	logic [31:0] read_addr;
 	logic [1:0] read_addr_lsb;
 	logic [31:0] byte_cnt;
+	logic [1:0] byte_cnt_lsb;
 	logic addr_busy;
 	logic [2:0]  full; // cannot issue further requests
 	logic first_flag;
@@ -389,6 +390,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 		if( !rst_ni ) begin
 			addr_busy <= 0;
 			byte_cnt <= 0;
+			byte_cnt_lsb <= 0;
 			read_addr <= 0;
 			read_addr_lsb <= 0;
 			first_flag <= 0;
@@ -397,6 +399,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 				read_addr <= araddr;
 				read_addr_lsb <= araddr[1:0];
 				byte_cnt <= arlen;
+				byte_cnt_lsb <= arlen[1:0];
 				addr_busy <= 1; // we are busy requesgin
 				first_flag <= 1'b1; 
 			end else if( addr_busy && mgr_req_o.req && mgr_rsp_i.gnt ) begin // addr transfer
@@ -413,7 +416,15 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 			end
 		end
 	end
-	assign last_flag = ( byte_cnt + read_addr[1:0]  <= 4 ) ? 1'b1 : 1'b0;
+	assign last_flag = ( byte_cnt + read_addr[1:0]  <= 4 ) ? 1'b1 : 1'b0; // last read word being sent
+
+	// determine if last flag indicates two output words to flush
+	logic [3:0] in_byte_cnt;
+	logic [3:0] out_byte_cnt;
+	logic double_last_flag;
+	assign in_byte_cnt = { 2'b00, read_addr_lsb[1:0]} + {2'b00, byte_cnt_lsb[1:0]} + 4'h3;
+	assign out_byte_cnt = { 2'b00, byte_cnt_lsb[1:0]} + 4'h3;
+	assign double_last_flag = ( read_addr_lsb != 0 && in_byte_cnt[3:2] == out_byte_cnt[3:2] ) ? 1'b1 : 1'b0;
 
 	// OBI req outputs
 	assign mgr_req_o.req = addr_busy & !full; // Throttling
@@ -432,8 +443,11 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 		if( !rst_ni ) begin
 			oust <= 0;
 		end else begin
-			oust <= ( ( mgr_req_o.req && mgr_rsp_i.gnt ) && !( (wvalid && wready) || skip_first_flag )  ) ? oust + 1 :
-			        (!( mgr_req_o.req && mgr_rsp_i.gnt ) &&  ( (wvalid && wready) || skip_first_flag )  ) ? oust - 1 : oust;
+			oust <= ( ( mgr_req_o.req && mgr_rsp_i.gnt && last_flag && double_last_flag ) && !( (wvalid && wready) || skip_first_flag )  ) ? oust + 2 :
+			        ( ( mgr_req_o.req && mgr_rsp_i.gnt && last_flag && double_last_flag ) &&  ( (wvalid && wready) || skip_first_flag )  ) ? oust + 1 :
+			        ( ( mgr_req_o.req && mgr_rsp_i.gnt                                  ) && !( (wvalid && wready) || skip_first_flag )  ) ? oust + 1 :
+			        ( ( mgr_req_o.req && mgr_rsp_i.gnt                                  ) &&  ( (wvalid && wready) || skip_first_flag )  ) ? oust + 0 :
+			        (!( mgr_req_o.req && mgr_rsp_i.gnt                                  ) &&  ( (wvalid && wready) || skip_first_flag )  ) ? oust - 1 : oust;
 		end
 	end
  
@@ -493,8 +507,13 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	// alighned Output register
 	logic [31:0] out_reg;
 	logic out_load;
+	logic out_load2;  // for last double
 	always_ff @(posedge clk_i) begin
-		if( out_load ) begin
+		if ( out_load2 ) begin // special case of doubled last
+			out_reg[31:0] <= ( read_addr_lsb[1:0]==1 ) ? {  8'h0, in_reg[6:4] } :
+			                 ( read_addr_lsb[1:0]==2 ) ? { 16'h0, in_reg[6:5] } :
+			                 /*read_addr_lsb[1:0]==3 )*/ { 24'h0, in_reg[6] } ;
+		end else if( out_load ) begin
 			out_reg[31:0] <= ( read_addr_lsb[1:0]==0 ) ? in_reg[6:3] :
 			                 ( read_addr_lsb[1:0]==1 ) ? in_reg[3:0] :
 			                 ( read_addr_lsb[1:0]==2 ) ? in_reg[4:1] :
@@ -510,11 +529,12 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 
 	logic skip_first_flag;
 	assign skip_first_flag = ( valid_1 && first_1 && !last_1 && read_addr_lsb[1:0] != 0 ) ? 1'b1 : 1'b0;
-	logic valid_0, valid_1;
+	logic valid_0, valid_1, valid_2;
 	always_ff @(posedge clk_i) begin
 		if( !rst_ni ) begin
 			valid_0 <= 0;
 			valid_1 <= 0;
+			valid_2 <= 0;	// only used for double last
 		end else begin
 			valid_0 <= ( mgr_rsp_i.rvalid ) ? 1'b1 : // always accepts data
 				   ( !valid_1 ) ? 1'b0 : // will pass on data, but still always accepts
@@ -525,11 +545,16 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 				   (  wready ) ? valid_0 : // accept if data out can occur
 				   ( skip_first_flag ) ? valid_0 : // output is discarded
 							valid_1; // else hold
+			valid_2 <= ( valid_1 && last_1 && wready && double_last_flag ) ? 1'b1 : // next will be double last
+				   ( wready ) ? 1'b0 : // real last transmitted
+						valid_2;
+				   
 		end
 	end
 
 	// logic to load the output regs
-	assign out_load = !valid_1 | wready | skip_first_flag; // load output regs when empty or to be empty
+	assign out_load = !valid_1 | (valid_1 & wready) | skip_first_flag; // load output regs when empty or to be empty
+	assign out_load2 = ( valid_1 && last_1 && wready && double_last_flag ) ? 1'b1 : 1'b0;
 
 	// track the flags
 	logic first_0, first_1;
@@ -544,13 +569,13 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	end
 
 	// axi write stream output port
-	assign wlast = last_1;
-	assign wbe = ( last_1 ) ? last_be : 4'b1111;
-	assign wvalid = valid_1 && !skip_first_flag;
+	assign wlast = ( double_last_flag ) ? valid_2 : last_1;
+	assign wbe = ( wlast ) ? last_be : 4'b1111;
+	assign wvalid = valid_1 && !skip_first_flag || valid_2;
 	assign wdata = { ( wbe[3] ) ? out_reg[31:24] : 8'h00,
-			( wbe[2] ) ? out_reg[23:16] : 8'h00,
-			( wbe[1] ) ? out_reg[15:08] : 8'h00,
-			( wbe[0] ) ? out_reg[07:00] : 8'h00 };
+			 ( wbe[2] ) ? out_reg[23:16] : 8'h00,
+		  	 ( wbe[1] ) ? out_reg[15:08] : 8'h00,
+			 ( wbe[0] ) ? out_reg[07:00] : 8'h00 };
 
 
 endmodule

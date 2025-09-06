@@ -171,7 +171,7 @@ int test_dma_read( char *ptr, int max_len ) {
 				err++;
 			}
 		}
-		if( err ) printf("ERROR len %x offset %x\n", len, ii);
+		if( err ) printf("\e[31mERROR\e[0m len %x offset %x\n", len, ii);
     	}
     }
     uart_write_flush();
