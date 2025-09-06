@@ -33,6 +33,8 @@ uint32_t isqrt(uint32_t n) {
 
 char receive_buff[16] = {0};
 
+int test_dma_read( char *ptr, int max_len );
+
 // ascon test buffers
 char key[16] = { 0x90, 0xE4, 0x15, 0xD6, 0x42, 0xBF, 0xCD, 0x59, 0xF1, 0xFC, 0xCA, 0x19, 0x6B, 0x3B, 0xB3, 0x09 };
 char npub[16] = { 0x8C, 0xEE, 0x7C, 0xDD, 0x81, 0x83, 0xCA, 0x6A, 0xA2, 0xDC, 0x9B, 0x8B, 0x20, 0xA1, 0x6E, 0x8E };
@@ -74,6 +76,8 @@ int main() {
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
     printf( "RDATA = %x\n", *((long *)0x20000004) );
     // Read dma tests, byte offsets, byte lenghs
+    test_dma_read( (char *)cmd[7] , 9 );
+/*
     for( int len = 1; len <= 9; len++ ) {
     	printf( "dma len %x\n", len);
         *((long *)0x20000010) = len;
@@ -83,6 +87,7 @@ int main() {
     		printf( "RDATA = %x %x %x\n", *((long *)0x20000004),*((long *)0x20000008),*((long *)0x2000000C) ); // print last 3 output words
     	}
     }
+*/
     uart_write_flush();
     
 // uart loopback
@@ -127,4 +132,48 @@ int main() {
     printf("Tocking\n");
     uart_write_flush();
     return 1;
+}
+
+int test_dma_read( char *ptr, int max_len ) {
+    int err = 0;
+    long word[4];
+    word[3] = 0;
+    for( int len = 1; len <= max_len; len++ ) {
+    	printf( "length %x\n", len);
+        *((long *)0x20000010) = len; // set byte lenght of transfers
+    	for( int ii = 0 ; ii <= 3; ii++ ) { // 4 differnt start byte alignments
+    		*((long *)0x20000004) = (long)(ptr+ii); // Issue DMA read  at this offset
+		printf("Offset = %x\n", ii ); // delay to make sure its done
+		// get and log  words
+		if( len <= 4 ){
+			word[0] = *((long *)0x20000004);
+			word[1] = 0;
+			word[2] = 0;
+    			printf( "RDATA = %x\n", word[0] ); 
+		} else if ( len <= 8 ) {
+			word[0] = *((long *)0x20000008);
+			word[1] = *((long *)0x20000004);
+			word[2] = 0;
+    			printf( "RDATA = %x %x\n", word[1], word[0] ); 
+		} else {
+			word[0] = *((long *)0x2000000C);
+			word[1] = *((long *)0x20000008);
+			word[2] = *((long *)0x20000004);
+    			printf( "RDATA = %x %x %x\n", word[2], word[1], word[0] ); 
+		}
+		// check data
+		err = 0;
+		for( int jj = 0; jj < len; jj++ ) {
+			char ref, test;
+			ref = ptr[ii+jj];
+			test = ((char*)word)[jj]; // always aligned
+			if( ref != test ) { 
+				err++;
+			}
+		}
+		if( err ) printf("ERROR len %x offset %x\n", len, ii);
+    	}
+    }
+    uart_write_flush();
+    return( err );
 }
