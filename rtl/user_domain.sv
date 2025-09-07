@@ -208,6 +208,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		                    	  ( raddr==2 ) ? dma_read_data[1] : 
     		                    	  ( raddr==3 ) ? dma_read_data[2] : 
 					  ( raddr==4 ) ? length :
+					  ( raddr==6 ) ? { 30'h0, status_data[0], status_cmd[0] } :
                                                          32'hdeadbeef;
     		sbr_rsp_o.r.rid   	= rid;
     		sbr_rsp_o.rvalid   	= rvalid; 
@@ -215,6 +216,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
   // connect MGR ports to dma engines
 
+	logic [4:0] status_cmd;
+	logic [4:0] status_data;
   	ascon_write_dma _auth_w (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
@@ -223,14 +226,14 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		.mgr_req_o   	( mgr_req_o[0] ),
     		.mgr_rsp_i   	( mgr_rsp_i[0] ),
 		// input dma write address, length (bytes)
-		.awvalid	( 1'b0 ), 
-		.awready	( ),
-		.awaddr		( 0 ),
-		.awlen		( 4 ), 
+		.awvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==5 ), 
+		.awready	( status_cmd[0] ),
+		.awaddr		( sbr_req_i.a.wdata ),
+		.awlen		( length ), 
 		// axi read word stream input
-		.rvalid		( 1'b0 ),
-		.rready		( ),
-		.rdata		( 32'h0 )
+		.rvalid		( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
+		.rready		( status_data[0] ),
+		.rdata		( sbr_req_i.a.wdata )
 	);
 
   	ascon_write_dma _bdo_w (
@@ -639,9 +642,9 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	logic [3:0] in_byte_cnt;
 	logic [3:0] out_byte_cnt;
 	logic double_last_flag;
-	assign in_byte_cnt = { 2'b00, write_addr_lsb[1:0]} + {2'b00, byte_cnt_lsb[1:0]} + 4'h3;
-	assign out_byte_cnt = { 2'b00, byte_cnt_lsb[1:0]} + 4'h3;
-	assign double_last_flag = ( write_addr_lsb != 0 && in_byte_cnt[3:2] == out_byte_cnt[3:2] ) ? 1'b1 : 1'b0;
+	assign out_byte_cnt = { 2'b00, write_addr_lsb[1:0]} + {2'b00, byte_cnt_lsb[1:0]} + 4'h3;
+	assign in_byte_cnt = { 2'b00, byte_cnt_lsb[1:0]} + 4'h3;
+	assign double_last_flag = ( write_addr_lsb != 0 && in_byte_cnt[3:2] != out_byte_cnt[3:2] ) ? 1'b1 : 1'b0;
 
 	// calc be byte enable
 	logic [3:0] first_be, last_be;
@@ -649,19 +652,23 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	always_ff @(posedge clk_i) begin
 		if( awvalid && awready ) begin // dma write command start addresss recevied
 			first_be <=( awaddr[1:0] == 0 ) ? 4'b1111 :
-		           	( awaddr[1:0] == 1 ) ? 4'b1000 :
-		           	( awaddr[1:0] == 2 ) ? 4'b1100 :
-		           	/*awaddr[1:0] == 3 )*/ 4'b1110 ;
-			first_be <=( awaddr[1:0]+awlen[1:0] == 0 ) ? 4'b1111 :
-		           	( awaddr[1:0]+awlen[1:0] == 1 ) ? 4'b0001 :
-		           	( awaddr[1:0]+awlen[1:0] == 2 ) ? 4'b0011 :
-		           	/*awaddr[1:0]+awlen[1:0] == 3 )*/ 4'b0111 ;
+		           	   ( awaddr[1:0] == 1 ) ? 4'b1110 :
+		           	   ( awaddr[1:0] == 2 ) ? 4'b1100 :
+		           	   /*awaddr[1:0] == 3 )*/ 4'b1000 ;
+			last_be <=( awaddr[1:0]+awlen[1:0] == 0 ) ? 4'b1111 :
+		           	  ( awaddr[1:0]+awlen[1:0] == 1 ) ? 4'b0001 :
+		           	  ( awaddr[1:0]+awlen[1:0] == 2 ) ? 4'b0011 :
+		           	  /*awaddr[1:0]+awlen[1:0] == 3 )*/ 4'b0111 ;
 		end
 	end
-	assign be = ( first_flag ) ? first_be : ( last_flag ) ? last_be : 4'b1111;
+
+	assign be = ( first_flag ) ? first_be : 
+                    ( last_flag & !double_last_flag ) ? last_be : 
+		    ( valid_2 ) ? last_be : 4'b1111;
 	
 	// Receive input aligned read words
-	assign rready = addr_busy;
+
+	assign rready =  addr_busy && ( !valid_0 || !valid_1 ||  mgr_req_o.req && mgr_rsp_i.gnt ); // take read data if inreg will be available
 	logic [6:0][7:0] in_reg;
 	always_ff @(posedge clk_i) begin
 		if( rready & rvalid ) begin // receive data
@@ -719,7 +726,7 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 
 	
 	// OBI write (addr, data, be)
-	assign mgr_req_o.req = addr_busy & !full; // Throttling AND data available
+	assign mgr_req_o.req = addr_busy & !full & ( valid_1 | valid_2 ); // throttle and await data
 	assign mgr_req_o.a.addr = { write_addr[31:2], 2'b00 }; // word addresses only
 	assign mgr_req_o.a.wdata = out_reg;
 	assign mgr_req_o.a.we = 1'b1;

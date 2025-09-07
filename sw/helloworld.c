@@ -34,6 +34,7 @@ uint32_t isqrt(uint32_t n) {
 char receive_buff[16] = {0};
 
 int test_dma_read( char *ptr, int max_len );
+int test_dma_write( char *ptr, int max_len, char *buf );
 
 // ascon test buffers
 char key[16] = { 0x90, 0xE4, 0x15, 0xD6, 0x42, 0xBF, 0xCD, 0x59, 0xF1, 0xFC, 0xCA, 0x19, 0x6B, 0x3B, 0xB3, 0x09 };
@@ -75,8 +76,11 @@ int main() {
     printf( "CT long = %x\n", ((long *)cmd[7])[0] );
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
     printf( "RDATA = %x\n", *((long *)0x20000004) );
+
     // Read dma tests, byte offsets, byte lenghs
     test_dma_read( (char *)cmd[7] , 9 );
+    // test DMA writes
+    test_dma_write( (char *)cmd[7] , 9, tag );
 /*
     for( int len = 1; len <= 9; len++ ) {
     	printf( "dma len %x\n", len);
@@ -176,4 +180,38 @@ int test_dma_read( char *ptr, int max_len ) {
     }
     uart_write_flush();
     return( err );
+}
+
+// using test data, use the dma writes of various byte offsets and lengths into
+// the buffer
+int test_dma_write( char *test_data, int max_len, char *buf ) 
+{
+	int err;
+	volatile long *cmd_reg = ((long *)0x20000014);
+	volatile long *len_reg = ((long *)0x20000010);
+
+    	printf( "DMA write test\n" );
+    	for( int len = 1; len <= max_len; len++ ) {
+    		printf( "length %x\n", len);
+        	*((long *)0x20000010) = len; // set byte lenght of transfers
+		//*len_reg = len;
+    		for( int ii = 0 ; ii <= 3; ii++ ) { // 4 differnt start byte alignments
+    			printf( "len %x ofs %x : ", len, ii );
+    			uart_write_flush();
+    			cmd_reg[0]  = (long)(buf+ii); // Issue DMA read  at this offset
+			for( int jj = 0; jj < len; jj+= 4) { // feed data input
+				while( cmd_reg[1] & 2 ); // wait until ready for data
+				cmd_reg[1] = *((long *)test_data+jj);
+			}
+			while( cmd_reg[1] & 1 ); // wait till done;
+			err = 0;
+			for( int jj = 0; jj < len; jj++ ) 
+				if( test_data[jj] != buf[ii+jj] ) 
+					err++;
+			if( err ) printf("\e[31mERROR\e[0m");
+			printf("\n");
+		}
+	}
+    uart_write_flush();
+	return( err );
 }
