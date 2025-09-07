@@ -324,6 +324,13 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 endmodule
  
 
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+//
+//                      OBI READ DMA
+//
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
 // OBI bus master dma READ engine.
 // OBI 32-bit read unaligned byte input to write valid/ready word word aligned little endian stream output 
 module ascon_read_dma import user_pkg::*; import croc_pkg::*; 
@@ -355,7 +362,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	logic [31:0] byte_cnt;
 	logic [1:0] byte_cnt_lsb;
 	logic addr_busy;
-	logic [2:0]  full; // cannot issue further requests
+	logic full; // cannot issue further requests
 	logic first_flag;
 	logic last_flag;
 	// Generate read transactions needed, work with limit on max oustanding transactions
@@ -551,6 +558,14 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 			 ( wbe[0] ) ? out_reg[07:00] : 8'h00 };
 endmodule
 
+
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+//
+//                      OBI WRITE DMA
+//
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
 // OBI bus master dma engine.
 // valid/ready word stream input DMA to byte address, byte lenght 
 module ascon_write_dma import user_pkg::*; import croc_pkg::*; 
@@ -583,7 +598,7 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	logic [31:0] byte_cnt;
 	logic [1:0] byte_cnt_lsb;
 	logic addr_busy;
-	logic [2:0]  full; // cannot issue further requests
+	logic full; // cannot issue further requests
 	logic first_flag;
 	logic last_flag;
 	// Generate read transactions needed, work with limit on max oustanding transactions
