@@ -6,6 +6,12 @@ packages:
       Path: rtl/apb
     dependencies:
     - common_cells
+  ascon:
+    revision: null
+    version: null
+    source:
+      Path: rtl/ascon
+    dependencies: []
   common_cells:
     revision: null
     version: null

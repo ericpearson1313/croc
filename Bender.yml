@@ -19,6 +19,7 @@ dependencies:
   obi:                  { git: "https://github.com/pulp-platform/obi.git",                  version: 0.1.7  }
   obi_peripherals:      { git: "https://github.com/pulp-platform/obi_peripherals.git",      rev: 21ee04d    } # UART
   cve2:                 { path: "rtl/cve2" } # a vendor package (no Bender.yml), see below 
+  ascon:                 { path: "rtl/ascon" } # cipher 
 
 
 sources:
@@ -188,3 +189,19 @@ vendor_package:
       - { from: 'README.md',                                    to: 'README.md',             patch_dir: '' }
       - { from: 'doc/03_reference/images/blockdiagram.svg',     to: 'blockdiagram.svg',      patch_dir: '' }
       - { from: 'vendor/lowrisc_ip/ip/prim/rtl/',               to: 'include/lowrisc_prim/', patch_dir: 'lowrisc_prim/' }
+
+  #########
+  # ASCON #
+  #########
+  # ASCON NIST SP800-232 Cipher hardware 
+  - name: ascon
+    target_dir: rtl/ascon
+    upstream: { git: "https://github.com/rprimas/ascon-verilog.git", rev: "fba1a545cbdb410610a00c45118fc885f2c59d17" }
+    patch_dir: "rtl/patches/ascon"
+    mapping:
+      - { from: 'rtl/',                                         to: '',                      patch_dir: 'rtl/' }
+      - { from: 'README.md',                                    to: 'README.md',             patch_dir: '' }
+      - { from: 'ascon.py',                                     to: 'ascon.py',              patch_dir: '' }
+      - { from: 'test.py',                                      to: 'test.py',               patch_dir: '' }
+
+  
