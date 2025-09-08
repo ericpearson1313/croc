@@ -649,20 +649,23 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	// calc be byte enable
 	logic [3:0] first_be, last_be;
 	logic [3:0] be;
+	logic [1:0] awlast;
+	assign awlast[1:0] = awaddr[1:0]+awlen[1:0];
 	always_ff @(posedge clk_i) begin
 		if( awvalid && awready ) begin // dma write command start addresss recevied
 			first_be <=( awaddr[1:0] == 0 ) ? 4'b1111 :
 		           	   ( awaddr[1:0] == 1 ) ? 4'b1110 :
 		           	   ( awaddr[1:0] == 2 ) ? 4'b1100 :
 		           	   /*awaddr[1:0] == 3 )*/ 4'b1000 ;
-			last_be <=( awaddr[1:0]+awlen[1:0] == 0 ) ? 4'b1111 :
-		           	  ( awaddr[1:0]+awlen[1:0] == 1 ) ? 4'b0001 :
-		           	  ( awaddr[1:0]+awlen[1:0] == 2 ) ? 4'b0011 :
-		           	  /*awaddr[1:0]+awlen[1:0] == 3 )*/ 4'b0111 ;
+			last_be <= ( awlast[1:0] == 0 ) ? 4'b1111 :
+		           	   ( awlast[1:0] == 1 ) ? 4'b0001 :
+		           	   ( awlast[1:0] == 2 ) ? 4'b0011 :
+		           	   /*awlast[1:0] == 3 )*/ 4'b0111 ;
 		end
 	end
 
-	assign be = ( first_flag ) ? first_be : 
+	assign be = ( first_flag & last_flag & !double_last_flag ) ? (first_be & last_be) :
+		    ( first_flag ) ? first_be : 
                     ( last_flag & !double_last_flag ) ? last_be : 
 		    ( valid_2 ) ? last_be : 4'b1111;
 	
@@ -674,7 +677,7 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 		if( rready & rvalid ) begin // receive data
 			// memory read data
 			in_reg[6:3] <= rdata;
-			in_reg[2:0] <= in_reg[6:4]; // shift in 3 prev bytes
+			in_reg[2:0] <= (first_flag) ? 24'h0 : in_reg[6:4]; // shift in 3 prev bytes, zero for first
 		end
 	end
 
@@ -685,14 +688,14 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	logic out_load2;  // for last double
 	always_ff @(posedge clk_i) begin
 		if ( out_load2 ) begin // special case of doubled last
-			out_reg[31:0] <= ( write_addr_lsb[1:0]==1 ) ? {  8'h0, in_reg[6:4] } :
-			                 ( write_addr_lsb[1:0]==2 ) ? { 16'h0, in_reg[6:5] } :
-			                 /*write_addr_lsb[1:0]==3 )*/ { 24'h0, in_reg[6] } ;
+			out_reg[31:0] <= ( write_addr_lsb[1:0]==1 ) ? {  8'h0, in_reg[2:0] } :
+			                 ( write_addr_lsb[1:0]==2 ) ? { 16'h0, in_reg[1:0] } :
+			                 /*write_addr_lsb[1:0]==3 )*/ { 24'h0, in_reg[0] } ;
 		end else if( out_load ) begin
 			out_reg[31:0] <= ( write_addr_lsb[1:0]==0 ) ? in_reg[6:3] :
-			                 ( write_addr_lsb[1:0]==1 ) ? in_reg[3:0] :
+			                 ( write_addr_lsb[1:0]==1 ) ? in_reg[5:2] :
 			                 ( write_addr_lsb[1:0]==2 ) ? in_reg[4:1] :
-			                 /*write_addr_lsb[1:0]==3 )*/ in_reg[5:2] ;
+			                 /*write_addr_lsb[1:0]==3 )*/ in_reg[3:0] ;
 		end
 	end
 

@@ -73,14 +73,13 @@ int main() {
 	printf( "%x ", ((char *)cmd[7])[idx] );
     }
     printf("\n");
-    printf( "CT long = %x\n", ((long *)cmd[7])[0] );
+    printf( "CT long = %x\n", ((long *)cmd[7])[0] ); // shows little endian
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
-    printf( "RDATA = %x\n", *((long *)0x20000004) );
 
-    // Read dma tests, byte offsets, byte lenghs
-    test_dma_read( (char *)cmd[7] , 9 );
     // test DMA writes
     test_dma_write( (char *)cmd[7] , 9, tag );
+    // Read dma tests, byte offsets, byte lenghs
+    test_dma_read( (char *)cmd[7] , 9 );
 /*
     for( int len = 1; len <= 9; len++ ) {
     	printf( "dma len %x\n", len);
@@ -192,24 +191,29 @@ int test_dma_write( char *test_data, int max_len, char *buf )
 
     	printf( "DMA write test\n" );
     	for( int len = 1; len <= max_len; len++ ) {
-    		printf( "length %x\n", len);
         	*((long *)0x20000010) = len; // set byte lenght of transfers
+    		printf( "length %x\n", *len_reg);
+    		uart_write_flush();
 		//*len_reg = len;
     		for( int ii = 0 ; ii <= 3; ii++ ) { // 4 differnt start byte alignments
-    			printf( "len %x ofs %x : ", len, ii );
-    			uart_write_flush();
+    			printf( "len %x ofs %x\n ", len, ii );
+			*((long *)(buf+8))=0;
+			*((long *)(buf+4))=0;
+			*((long *)(buf+0))=0;
     			cmd_reg[0]  = (long)(buf+ii); // Issue DMA read  at this offset
+    			uart_write_flush();
 			for( int jj = 0; jj < len; jj+= 4) { // feed data input
-				while( cmd_reg[1] & 2 ); // wait until ready for data
-				cmd_reg[1] = *((long *)test_data+jj);
+				while( cmd_reg[1] & 2 == 0 ); // wait until ready for data
+				cmd_reg[1] = *((long *)(test_data+jj));
 			}
-			while( cmd_reg[1] & 1 ); // wait till done;
+			while( cmd_reg[1] & 1 == 0 ); // wait till done;
 			err = 0;
 			for( int jj = 0; jj < len; jj++ ) 
 				if( test_data[jj] != buf[ii+jj] ) 
 					err++;
-			if( err ) printf("\e[31mERROR\e[0m");
-			printf("\n");
+			printf("%x %x %x\n",*((long *)(buf+8)),*((long *)(buf+4)),*((long *)(buf+0)));
+			printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
+    			uart_write_flush();
 		}
 	}
     uart_write_flush();
