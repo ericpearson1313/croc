@@ -697,9 +697,9 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	end
 
 	logic [31:0] write_data;
-	assign write_data = ( valid_2 && write_addr_lsb[1:0]==1 ) ?  {  8'h0, out_reg[2:0] } :
-			    ( valid_2 && write_addr_lsb[1:0]==2 ) ?  { 16'h0, out_reg[1:0] } :
-			    ( valid_2 && write_addr_lsb[1:0]==3 ) ?  { 24'h0, out_reg[0]   } :
+	assign write_data = ( valid_2 && write_addr_lsb[1:0]==1 ) ?  { 24'h0, out_reg[6  ] } :
+			    ( valid_2 && write_addr_lsb[1:0]==2 ) ?  { 16'h0, out_reg[6:5] } :
+			    ( valid_2 && write_addr_lsb[1:0]==3 ) ?  {  8'h0, out_reg[6:4] } :
 			               ( write_addr_lsb[1:0]==0 ) ?           out_reg[6:3] :
 			               ( write_addr_lsb[1:0]==1 ) ?           out_reg[5:2] :
 			               ( write_addr_lsb[1:0]==2 ) ?           out_reg[4:1] :
