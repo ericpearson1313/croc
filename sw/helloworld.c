@@ -213,6 +213,7 @@ int test_dma_write( char *test_data, int max_len, char *buf )
 					err++;
 			printf("%x %x %x\n",*((long *)(buf+8)),*((long *)(buf+4)),*((long *)(buf+0)));
 			printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
+			if( err ) printf(" Status %x\n", cmd_reg[1]);
     			uart_write_flush();
 		}
 	}

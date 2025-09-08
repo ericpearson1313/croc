@@ -489,6 +489,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 
 	// alighned Output register
 	logic [31:0] out_reg;
+	logic [31:0] out_reg2;
 	logic out_load;
 	logic out_load2;  // for last double
 	always_ff @(posedge clk_i) begin
@@ -628,7 +629,7 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 					byte_cnt <= 0;
 					write_addr <= 0;
 				end else begin
-					addr_busy <= 1'b1;
+					addr_busy <= addr_busy;
 					byte_cnt <= byte_cnt - 4;
 					write_addr <= write_addr+4;
 				end
@@ -645,6 +646,10 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	assign out_byte_cnt = { 2'b00, write_addr_lsb[1:0]} + {2'b00, byte_cnt_lsb[1:0]} + 4'h3;
 	assign in_byte_cnt = { 2'b00, byte_cnt_lsb[1:0]} + 4'h3;
 	assign double_last_flag = ( write_addr_lsb != 0 && in_byte_cnt[3:2] != out_byte_cnt[3:2] ) ? 1'b1 : 1'b0;
+
+	// second last flag to indicate not to advance buffer state only in case of double last case
+	logic second_last_flag;
+	assign second_last_flag = (double_last_flag && ( byte_cnt + write_addr[1:0]  <= 8 ) ) ? 1'b1 : 1'b0;
 
 	// calc be byte enable
 	logic [3:0] first_be, last_be;
@@ -664,10 +669,10 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 		end
 	end
 
-	assign be = ( first_flag & last_flag & !double_last_flag ) ? (first_be & last_be) :
+	assign be = ( first_flag & last_flag ) ? (first_be & last_be) :
 		    ( first_flag ) ? first_be : 
-                    ( last_flag & !double_last_flag ) ? last_be : 
-		    ( valid_2 ) ? last_be : 4'b1111;
+                    ( last_flag ) ? last_be : 
+                                   4'b1111;
 	
 	// Receive input aligned read words
 
@@ -677,30 +682,31 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 		if( rready & rvalid ) begin // receive data
 			// memory read data
 			in_reg[6:3] <= rdata;
-			in_reg[2:0] <= (first_flag) ? 24'h0 : in_reg[6:4]; // shift in 3 prev bytes, zero for first
+			in_reg[2:0] <= in_reg[6:4]; // shift in 3 prev bytes, zero for first
 		end
 	end
 
 	// Shift read words to write alignment `
 	// alighned Output register
-	logic [31:0] out_reg;
+	logic [6:0][7:0] out_reg;
 	logic out_load;
-	logic out_load2;  // for last double
 	always_ff @(posedge clk_i) begin
-		if ( out_load2 ) begin // special case of doubled last
-			out_reg[31:0] <= ( write_addr_lsb[1:0]==1 ) ? {  8'h0, in_reg[2:0] } :
-			                 ( write_addr_lsb[1:0]==2 ) ? { 16'h0, in_reg[1:0] } :
-			                 /*write_addr_lsb[1:0]==3 )*/ { 24'h0, in_reg[0] } ;
-		end else if( out_load ) begin
-			out_reg[31:0] <= ( write_addr_lsb[1:0]==0 ) ? in_reg[6:3] :
-			                 ( write_addr_lsb[1:0]==1 ) ? in_reg[5:2] :
-			                 ( write_addr_lsb[1:0]==2 ) ? in_reg[4:1] :
-			                 /*write_addr_lsb[1:0]==3 )*/ in_reg[3:0] ;
+		if( out_load ) begin
+			out_reg <= in_reg;
 		end
 	end
 
+	logic [31:0] write_data;
+	assign write_data = ( valid_2 && write_addr_lsb[1:0]==1 ) ?  {  8'h0, out_reg[2:0] } :
+			    ( valid_2 && write_addr_lsb[1:0]==2 ) ?  { 16'h0, out_reg[1:0] } :
+			    ( valid_2 && write_addr_lsb[1:0]==3 ) ?  { 24'h0, out_reg[0]   } :
+			               ( write_addr_lsb[1:0]==0 ) ?           out_reg[6:3] :
+			               ( write_addr_lsb[1:0]==1 ) ?           out_reg[5:2] :
+			               ( write_addr_lsb[1:0]==2 ) ?           out_reg[4:1] :
+			               /*write_addr_lsb[1:0]==3 )*/           out_reg[3:0] ;
+
 	// Valid bits tracking input shift/buffering. decouples input/output
-	logic valid_0; // shifter input valid
+	logic valid_0; // shifter input valid 
 	logic valid_1; // shifter output valid
 	logic valid_2; // double last word
 	always_ff @(posedge clk_i) begin
@@ -709,29 +715,28 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 			valid_1 <= 0;
 			valid_2 <= 0;	// only used for double last
 		end else begin
-			valid_0 <= ( rready & rvalid ) ? 1'b1 : // read data input
-				   ( !valid_1 ) ? 1'b0 : // out regs available
-				   (  mgr_req_o.req && mgr_rsp_i.gnt ) ? 1'b0 : // addr written frees valid1
+			valid_0 <= (   rready && rvalid ) ? 1'b1 : // axi read data input
+				   ( !valid_1 && !valid_2 ) ? 1'b0 : // out regs available
+				   (  valid_1 && mgr_req_o.req && mgr_rsp_i.gnt  && !second_last_flag ) ? 1'b0 : // 
+				   (  valid_2 && mgr_req_o.req && mgr_rsp_i.gnt ) ? 1'b0 : 
 							valid_0; // hold
-			valid_1 <= ( !valid_1 ) ? valid_0 : // accept if we're empty
-				   (  mgr_req_o.req && mgr_rsp_i.gnt ) ? valid_0 : // accept if addr written
-									 valid_1; // hold
-			valid_2 <= ( valid_1 && last_flag && mgr_req_o.req && mgr_rsp_i.gnt && double_last_flag ) ? 1'b1 : // next will be double last
-					(  valid_2 && mgr_req_o.req && mgr_rsp_i.gnt ) ? 1'b0 :
-										valid_2; // hold
-				   
+	   { valid_2, valid_1 }	<= ( !valid_1 && !valid_2 ) ? { 1'b0, valid_0 } : // accept if we're empty
+		                   (  valid_1 && mgr_req_o.req && mgr_rsp_i.gnt && second_last_flag ) ? 2'b10 : // we'll need this buffer again
+		                   (  valid_1 && mgr_req_o.req && mgr_rsp_i.gnt ) ? { 1'b0, valid_0 } : 
+				   (  valid_2 && mgr_req_o.req && mgr_rsp_i.gnt ) ? { 1'b0, valid_0 } : 
+									            { valid_2, valid_1 } ; // hold
 		end
 	end
 
 	// Load strobes
-	assign out_load =  !valid_1 ||  mgr_req_o.req && mgr_rsp_i.gnt;
-	assign out_load2 = valid_1 && last_flag && mgr_req_o.req && mgr_rsp_i.gnt && double_last_flag;
-
+	assign out_load =  ( !valid_1 && !valid_2 ) ||
+			   (  valid_1 && mgr_req_o.req && mgr_rsp_i.gnt && !second_last_flag ) ||
+			   (  valid_2 && mgr_req_o.req && mgr_rsp_i.gnt );
 	
 	// OBI write (addr, data, be)
 	assign mgr_req_o.req = addr_busy & !full & ( valid_1 | valid_2 ); // throttle and await data
 	assign mgr_req_o.a.addr = { write_addr[31:2], 2'b00 }; // word addresses only
-	assign mgr_req_o.a.wdata = out_reg;
+	assign mgr_req_o.a.wdata = write_data;
 	assign mgr_req_o.a.we = 1'b1;
 	assign mgr_req_o.a.be = be[3:0];
 	assign mgr_req_o.a.aid = 0;
@@ -744,11 +749,9 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 		if( !rst_ni ) begin
 			oust <= 0;
 		end else begin
-			oust <= ( ( mgr_req_o.req && mgr_rsp_i.gnt && last_flag && double_last_flag ) && !(mgr_rsp_i.rvalid)) ? oust + 2 :
-			        ( ( mgr_req_o.req && mgr_rsp_i.gnt && last_flag && double_last_flag ) &&  (mgr_rsp_i.rvalid)) ? oust + 1 :
-			        ( ( mgr_req_o.req && mgr_rsp_i.gnt                                  ) && !(mgr_rsp_i.rvalid)) ? oust + 1 :
-			        ( ( mgr_req_o.req && mgr_rsp_i.gnt                                  ) &&  (mgr_rsp_i.rvalid)) ? oust + 0 :
-			        (!( mgr_req_o.req && mgr_rsp_i.gnt                                  ) &&  (mgr_rsp_i.rvalid)) ? oust - 1 : oust;
+			oust <= ( ( mgr_req_o.req && mgr_rsp_i.gnt ) && !(mgr_rsp_i.rvalid)) ? oust + 1 :
+			        ( ( mgr_req_o.req && mgr_rsp_i.gnt ) &&  (mgr_rsp_i.rvalid)) ? oust + 0 :
+			        (!( mgr_req_o.req && mgr_rsp_i.gnt ) &&  (mgr_rsp_i.rvalid)) ? oust - 1 : oust;
 		end
 	end
 	assign full = (oust >= 2) ? 1'b1 : 1'b0; // ToDo figure out extra word
