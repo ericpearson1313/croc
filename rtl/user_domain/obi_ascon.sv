@@ -162,7 +162,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arlen		( length ), // read a word
 		// axi Write data word stream output 
 		.wvalid		( axi_wvalid ),
-		.wready		( status_data[2] ),
+		.wready		( 1'b1 ),
 		.wdata		( axi_wdata ),
 		.wbe		( ),
 		.wlast		( )
