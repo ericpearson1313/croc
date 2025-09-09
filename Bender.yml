@@ -47,6 +47,9 @@ sources:
       - rtl/croc_domain.sv
       - rtl/user_domain.sv
       # add your design files with modules here
+      - rtl/user_domain/ascon_read_dma.sv
+      - rtl/user_domain/ascon_write_dma.sv
+      - rtl/user_domain/obi_ascon.sv
       # Level 3
       - rtl/croc_soc.sv
 
