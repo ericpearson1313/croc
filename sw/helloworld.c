@@ -77,6 +77,7 @@ int main() {
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
 
     // test DMA writes
+    test_dma_read( (char *)cmd[7] , 9 );
     test_dma_write( (char *)cmd[7] , 9, tag );
     // Read dma tests, byte offsets, byte lenghs
     test_dma_read( (char *)cmd[7] , 9 );
@@ -138,30 +139,32 @@ int main() {
 }
 
 int test_dma_read( char *ptr, int max_len ) {
+    volatile long *hw_reg = ((long *)0x20000000);
     int err = 0;
     long word[4];
     word[3] = 0;
+    printf( "DMA READ Test len %d\n", max_len );
     for( int len = 1; len <= max_len; len++ ) {
-    	printf( "length %x\n", len);
-        *((long *)0x20000010) = len; // set byte lenght of transfers
+        hw_reg[4] = len; // set byte lenght of transfers
+    	printf( "length %x\n",  hw_reg[4] );
     	for( int ii = 0 ; ii <= 3; ii++ ) { // 4 differnt start byte alignments
-    		*((long *)0x20000004) = (long)(ptr+ii); // Issue DMA read  at this offset
-		printf("Offset = %x\n", ii ); // delay to make sure its done
-		// get and log  words
+		printf("len %x ofs %x\n", len, ii ); // delay to make sure its done
+    		hw_reg[1] = (long)(ptr+ii); // Issue DMA read  at this offset
+		while( (hw_reg[6] & (1<<8)) == 0 ); // wait for command to finish
 		if( len <= 4 ){
-			word[0] = *((long *)0x20000004);
+			word[0] = hw_reg[1];
 			word[1] = 0;
 			word[2] = 0;
     			printf( "RDATA = %x\n", word[0] ); 
 		} else if ( len <= 8 ) {
-			word[0] = *((long *)0x20000008);
-			word[1] = *((long *)0x20000004);
+			word[0] = hw_reg[2];
+			word[1] = hw_reg[1];
 			word[2] = 0;
     			printf( "RDATA = %x %x\n", word[1], word[0] ); 
 		} else {
-			word[0] = *((long *)0x2000000C);
-			word[1] = *((long *)0x20000008);
-			word[2] = *((long *)0x20000004);
+			word[0] = hw_reg[3];
+			word[1] = hw_reg[2];
+			word[2] = hw_reg[1];
     			printf( "RDATA = %x %x %x\n", word[2], word[1], word[0] ); 
 		}
 		// check data
@@ -174,7 +177,8 @@ int test_dma_read( char *ptr, int max_len ) {
 				err++;
 			}
 		}
-		if( err ) printf("\e[31mERROR\e[0m len %x offset %x\n", len, ii);
+		printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
+		if( err ) printf("len %x ofs %x status %x\n", len, ii, hw_reg[6] );
     	}
     }
     uart_write_flush();
@@ -213,7 +217,7 @@ int test_dma_write( char *test_data, int max_len, char *buf )
 					err++;
 			printf("%x %x %x\n",*((long *)(buf+8)),*((long *)(buf+4)),*((long *)(buf+0)));
 			printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
-			if( err ) printf(" Status %x\n", cmd_reg[1]);
+			if( err ) printf("len %x ofs %x status %x\n", len, ii, *((long *)0x20000018));
     			uart_write_flush();
 		}
 	}
