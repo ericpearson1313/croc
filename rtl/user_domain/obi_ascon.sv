@@ -66,6 +66,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	
 	// authentication output
 	logic 		auth; 			
+	logic 		auth_ready; // ignored
 	logic 		auth_valid;	// sample auth pulse
 
 	// ASCON core from github.com/rprimas/ascon-verilog
@@ -106,7 +107,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
   //////////////////////////
 
 	logic [4:0] status_cmd;
-	logic [4:0] status_data;
+	logic [4:0] status_dma;
+	logic [4:0] status_dev;
 	// Auth DMA write (5)
   	ascon_write_dma _auth_w (
     		.clk_i		( clk_i ),
@@ -121,10 +123,12 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.awaddr		( sbr_req_i.a.wdata ),
 		.awlen		( length ),  // 
 		// axi read word stream input
-		.rvalid		(   auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
-		.rready		( status_data[0] ),
-		.rdata		( ( auth_valid ) ? ( (auth) ? "Pass" : "Fail" ) : sbr_req_i.a.wdata )
+		.rvalid		(  auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
+		.rready		(  auth_ready ),
+		.rdata		(( auth_valid ) ? ( (auth) ? "Pass" : "Fail" ) : sbr_req_i.a.wdata )
 	);
+	assign status_dma[0] = auth_ready;
+	assign status_dev[0] = auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6;
 
 	// BDO Write DMA (9)
   	ascon_write_dma _bdo_w (
@@ -140,10 +144,12 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.awaddr		( sbr_req_i.a.wdata ),
 		.awlen		( length ), 
 		// axi read word stream input
-		.rvalid		( bdo_valid ),
+		.rvalid		( bdo_valid  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
 		.rdata		( bdo_data )
 	);
+	assign status_dma[1] = bdo_ready;
+	assign status_dev[1] = bdo_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10;
 	
 	logic [31:0] axi_wdata;
 	logic axi_wvalid;
@@ -167,6 +173,9 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.wbe		( ),
 		.wlast		( )
 	);
+	assign status_dma[2] = axi_wvalid;
+	assign status_dev[2] = 1'b1;
+
 
 	// latch the stream output to get the read data word
 	always_ff @(posedge clk_i) begin
@@ -195,6 +204,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.wbe		( ),
 		.wlast		( )
 	);
+	assign status_dma[3] = key_ready;
+	assign status_dev[3] = key_valid;
 
 	// BDI Read DMA (11)
   	ascon_read_dma _bdi_r (
@@ -216,7 +227,23 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.wbe		( bdi_be ),
 		.wlast		( bdi_last )
 	);
+	assign status_dma[4] = key_ready;
+	assign status_dev[4] = key_valid;
 
+	// assemble the read only status word
+	logic [31:0] status_word; 
+	always_comb begin
+		status_word = 0;
+		// assign 1 nibble per dma engine [19:0]
+		for( int ii = 0; ii < 5; ii++ ) 
+			status_word[ii*4+3-:4] = { 1'b0, status_dev[ii], status_dma[ii], status_cmd[ii] };
+		// device status bits packed in msb
+		status_word[25] = done;
+		status_word[26] = auth;
+		status_word[27] = bdo_type[3:0]; 
+		status_word[31:28] = bdo_type[3:0]; 
+	end
+	
   //////////////////////////
   // OBI Sub Interface
   //////////////////////////
@@ -253,7 +280,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		                    	  ( raddr==2 ) ? dma_read_data[1] : 
     		                    	  ( raddr==3 ) ? dma_read_data[2] : 
 					  ( raddr==4 ) ? length :
-					  ( raddr==6 ) ? { 30'h0, status_data[0], status_cmd[0] } :
+					  ( raddr==6 ) ? status_word :
                                                          32'hdeadbeef;
     		sbr_rsp_o.r.rid   	= rid;
     		sbr_rsp_o.rvalid   	= rvalid; 
