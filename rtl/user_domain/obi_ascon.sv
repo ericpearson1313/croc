@@ -45,7 +45,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	
 	// Block data input to the core and handshake
 	logic [31:0]	bdi;	
-	logic [3:0]	bdi_valid; // bytes can be marked invalid
+	logic      	bdi_valid; // whole word valid
 	logic 		bdi_ready;	 	
 	logic [3:0]	bdi_type; // Inidates type of data
 	logic 		bdi_eot; // indicates end of data type	 	
@@ -53,8 +53,6 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	// local vars
 	logic [3:0]     bdi_be;
 	logic           bdi_last;
-	logic 	        bdi_valid_word;
-	assign bdi_valid = {4{bdi_valid_word}}&bdi_be[3:0];
 	
 	// Block Data out of the core
 	logic [31:0]	bdo; 	
@@ -80,7 +78,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.key_ready	( key_ready 	),
 		// connected to bdi read dma and some controls
 		.bdi		( bdi[31:0] 	),
-		.bdi_valid	( bdi_valid[3:0]),
+		.bdi_valid	( {4{bdi_valid}}&bdi_be[3:0] ),
 		.bdi_ready	( bdi_ready 	),
 		.bdi_type	( bdi_type[3:0]	), 
 		.bdi_eot	( bdi_last & bdi_eot ),
@@ -101,6 +99,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// status flag
 		.done       	( done 		)
 	);
+
+	// some hardwired connectoins
+	assign mode[3:0] = ascon_ctrl[11:8];
+	assign bdo_eoo   = ascon_ctrl[12]; // not sure
 
   //////////////////////////
   // OBI DMA Managers (5)
@@ -166,6 +168,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arready	( status_cmd[2] ),
 		.araddr		( sbr_req_i.a.wdata ),
 		.arlen		( length ), // read a word
+		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( axi_wvalid ),
 		.wready		( 1'b1 ),
@@ -197,6 +200,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arready	( status_cmd[3] ),
 		.araddr		( sbr_req_i.a.wdata ),
 		.arlen		( 4 ), 
+		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( key_valid ),
 		.wready		( key_ready ),
@@ -220,10 +224,12 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arready	( status_cmd[4] ),
 		.araddr		( sbr_req_i.a.wdata ),
 		.arlen		( length ), 
+		.aruser         ( ascon_ctrl[5:0] ), 
 		// axi Write data word stream output 
-		.wvalid		( bdi_valid_word ),
+		.wvalid		( bdi_valid ),
 		.wready		( bdi_ready ),
 		.wdata		( bdi_data ),
+		.wuser		( { bdi_type[3:0], bdi_eot, bdi_eoi } ),
 		.wbe		( bdi_be ),
 		.wlast		( bdi_last )
 	);
@@ -268,6 +274,15 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==4 ) 
 			length <= sbr_req_i.a.wdata;
 	end
+
+	// control engine controls (13)
+	logic [31:0] ascon_ctrl;
+	always_ff @(posedge clk_i) begin
+		if( !rst_ni )
+			ascon_ctrl<= 0; 
+		else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==13 ) 
+			ascon_ctrl <= sbr_req_i.a.wdata;
+	end
 	
 	// formulate the response
 	logic [2:0][31:0] dma_read_data;
@@ -280,6 +295,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		                    	  ( raddr==2 ) ? dma_read_data[1] : 
     		                    	  ( raddr==3 ) ? dma_read_data[2] : 
 					  ( raddr==4 ) ? length :
+					  ( raddr==13) ? ascon_ctrl :
 					  ( raddr==6 ) ? status_word :
                                                          32'hdeadbeef;
     		sbr_rsp_o.r.rid   	= rid;

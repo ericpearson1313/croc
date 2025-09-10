@@ -28,10 +28,12 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	output logic 		arready,
 	input  logic 	[31:0] 	araddr,
 	input  logic 	[31:0] 	arlen,
+	input  logic 	[5:0] 	aruser,
 	// Write data stream output 
 	output logic 		wvalid,
 	input  logic 		wready,
 	output logic [31:0]	wdata,
+	output logic [5 :0]	wuser,
 	output logic [ 3:0]  	wbe,
 	output logic         	wlast
   	);
@@ -42,6 +44,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	logic [1:0] read_addr_lsb;
 	logic [31:0] byte_cnt;
 	logic [1:0] byte_cnt_lsb;
+	logic [5:0] user_in;
 	logic addr_busy;
 	logic full; // cannot issue further requests
 	logic first_flag;
@@ -55,10 +58,12 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 			read_addr <= 0;
 			read_addr_lsb <= 0;
 			first_flag <= 0;
+			user_in <= 0;
 		end else begin
 			if( arvalid && arready ) begin // dma command start addresss recevied
 				read_addr <= araddr;
 				read_addr_lsb <= araddr[1:0];
+				user_in <= aruser;
 				byte_cnt <= arlen;
 				byte_cnt_lsb <= arlen[1:0];
 				addr_busy <= 1; // we are busy requesgin
@@ -69,6 +74,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 					addr_busy <= 0;
 					byte_cnt <= 0;
 					read_addr <= 0;
+					user_in <= 0;
 				end else begin
 					addr_busy <= 1'b1;
 					byte_cnt <= byte_cnt - 4;
@@ -231,6 +237,7 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	end
 
 	// axi write stream output port
+	assign wuser = user_in;
 	assign wlast = ( double_last_flag ) ? valid_2 : last_1;
 	assign wbe = ( wlast ) ? last_be : 4'b1111;
 	assign wvalid = valid_1 && !skip_first_flag || valid_2;
