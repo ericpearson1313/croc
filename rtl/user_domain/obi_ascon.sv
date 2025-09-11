@@ -123,7 +123,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.awvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==5 ), 
 		.awready	( status_cmd[0] ),
 		.awaddr		( sbr_req_i.a.wdata ),
-		.awlen		( length ),  // 
+		.awlen		( length ),  // should be hw as 1 or 4
 		// axi read word stream input
 		.rvalid		(  auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
 		.rready		(  auth_ready ),
@@ -167,7 +167,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==1 ), // wr addr 0x4
 		.arready	( status_cmd[2] ),
 		.araddr		( sbr_req_i.a.wdata ),
-		.arlen		( length ), // read a word
+		.arlen		( length ), // read a word TBD 4 or 0xfffffff?
 		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( axi_wvalid ),
@@ -199,7 +199,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==7 ), 
 		.arready	( status_cmd[3] ),
 		.araddr		( sbr_req_i.a.wdata ),
-		.arlen		( 4 ), 
+		.arlen		( 16 ), 
 		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( key_valid ),
