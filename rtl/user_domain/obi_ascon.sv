@@ -208,8 +208,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.wbe		( ),
 		.wlast		( )
 	);
-	assign status_dma[3] = key_ready;
-	assign status_dev[3] = key_valid;
+	assign status_dma[3] = key_valid;
+	assign status_dev[3] = key_ready;
 
 	// BDI Read DMA (11)
   	ascon_read_dma _bdi_r (
@@ -233,8 +233,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.wbe		( bdi_be ),
 		.wlast		( bdi_last )
 	);
-	assign status_dma[4] = key_ready;
-	assign status_dev[4] = key_valid;
+	assign status_dma[4] = bdi_valid;
+	assign status_dev[4] = bdi_ready;
 
 	// assemble the read only status word
 	logic [31:0] status_word; 
