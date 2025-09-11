@@ -35,6 +35,7 @@ char receive_buff[16] = {0};
 
 int test_dma_read( char *ptr, int max_len );
 int test_dma_write( char *ptr, int max_len, char *buf );
+volatile long *hw_reg = ((long *)0x20000000);
 
 // ascon test buffers
 char key[16] = { 0x90, 0xE4, 0x15, 0xD6, 0x42, 0xBF, 0xCD, 0x59, 0xF1, 0xFC, 0xCA, 0x19, 0x6B, 0x3B, 0xB3, 0x09 };
@@ -62,10 +63,8 @@ int main() {
     cmd[4] = (long)ad;
     cmd[5] = 9; // msg len
     cmd[6] = (long)pt;
-    cmd[7] = (long)ct;
+    cmd[7] = (long)pt;
     cmd[8] = (long)tag;
-
-    //ascon[0] = cmd; // starte the code running
 
     // Print out a string
     printf( "CT = " );
@@ -76,22 +75,66 @@ int main() {
     printf( "CT long = %x\n", ((long *)cmd[7])[0] ); // shows little endian
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
 
+   printf( "PT = " );
+   	for(uint8_t idx = 0; idx<9; idx++) {
+		printf( "%x ", pt[idx] );
+    }
+   printf( "tag = " );
+   	for(uint8_t idx = 0; idx<9; idx++) {
+		printf( "%x ", tag[idx] );
+    }
+    // Test Cipher in encode mode
+    hw_reg[13] = 1<<0 + // encode mode
+		 1<<4 + // bdi eot
+		 0<<5 + // bdi eoi
+		 1<<8 + // bdi nonce type
+		 0<<1; // eoo
+    printf("Key\n");
+    hw_reg[7] = (long)key; // send a key
+    while( hw_reg[6] & (1<<12) == 0 ); // wait for key send
+    printf("Nonce\n");
+    hw_reg[11] = (long)npub; // send nonce via bdi
+    while( hw_reg[6] & (1<<16) == 0 ); // wait for bdi send
+    hw_reg[4] = 9; // set ad length
+    hw_reg[13] = 1<<0 + // encode mode
+		 1<<4 + // bdi eot
+		 0<<5 + // bdi eoi
+		 2<<8 + // ad type
+		 0<<1; // eoo
+    printf("AD\n");
+    hw_reg[11] = (long)ad; // send ad via bdi
+    while( hw_reg[6] & (1<<16) == 0 ); // wait for bdi send
+    hw_reg[4] = 9; // set msg length
+    hw_reg[4] = 9; // set ad length
+    hw_reg[13] = 1<<0 + // encode mode
+		 1<<4 + // bdi eot
+		 1<<5 + // bdi eoi
+		 3<<8 + // ad type
+		 0<<1; // eoo
+    printf("MSG\n");
+   hw_reg[11] = (long)pt; // start BDI
+   hw_reg[9] = (long)pt; // start BDO convert in place
+   while( hw_reg[6] & (1<<16) == 0 ); // wait for bdi send
+   while( hw_reg[6] & (1<<14) == 0 ); // wait for bdo output
+   hw_reg[9] = (long)tag; // start BDO for tag
+   while( hw_reg[6] & (1<<14) == 0 ); // wait for bdo output
+   printf( "PT = " );
+   	for(uint8_t idx = 0; idx<9; idx++) {
+		printf( "%x ", pt[idx] );
+    }
+   printf( "tag = " );
+   	for(uint8_t idx = 0; idx<9; idx++) {
+		printf( "%x ", tag[idx] );
+    }
+   
+    
+
+	
     // test DMA writes
-    test_dma_read( (char *)cmd[7] , 9 );
     test_dma_write( (char *)cmd[7] , 9, tag );
     // Read dma tests, byte offsets, byte lenghs
     test_dma_read( (char *)cmd[7] , 9 );
-/*
-    for( int len = 1; len <= 9; len++ ) {
-    	printf( "dma len %x\n", len);
-        *((long *)0x20000010) = len;
-    	for( int ii = 0 ; ii < 10-len; ii++ ) {
-    		*((long *)0x20000004) = (long)(((char *)cmd[7])+ii); // Issue DMA read of 4 bytes from provided byte address
-		printf("Offset = %x\n", ii ); // delay to make sure its done
-    		printf( "RDATA = %x %x %x\n", *((long *)0x20000004),*((long *)0x20000008),*((long *)0x2000000C) ); // print last 3 output words
-    	}
-    }
-*/
+
     uart_write_flush();
     
 // uart loopback
