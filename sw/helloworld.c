@@ -66,6 +66,33 @@ int main() {
     cmd[7] = (long)pt;
     cmd[8] = (long)tag;
 
+#define BDI_EOT	(1<<0)
+#define BDI_EOI	(1<<1)
+#define MODE_ENC (1<<8)
+#define BDI_TYPE_NOP   (0<<2)
+#define BDI_TYPE_NONCE (1<<2)
+#define BDI_TYPE_AD    (2<<2)
+#define BDI_TYPE_MSG   (3<<2)
+
+#define STATUS_BDI_DEV  (4<<16)
+#define STATUS_BDI_DMA  (2<<16)
+#define STATUS_BDI_CMD  (1<<16)
+#define STATUS_KEY_DEV  (4<<12)
+#define STATUS_KEY_DMA  (2<<12)
+#define STATUS_KEY_CMD  (1<<12)
+#define STATUS_CMD_DEV  (4<<8 )
+#define STATUS_CMD_DMA  (2<<8 )
+#define STATUS_CMD_CMD  (1<<8 )
+#define STATUS_BDO_DEV  (4<<4 )
+#define STATUS_BDO_DMA  (2<<4 )
+#define STATUS_BDO_CMD  (1<<4 )
+#define STATUS_AUTH_DEV  (4<<0 )
+#define STATUS_AUTH_DMA  (2<<0 )
+#define STATUS_AUTH_CMD  (1<<0 )
+#define STATUS_AUTH      (1<<26 )
+#define STATUS_DONE      (1<<25 )
+
+
     // Print out a string
     printf( "CT = " );
     for(uint8_t idx = 0; idx<9; idx++) {
@@ -75,59 +102,70 @@ int main() {
     printf( "CT long = %x\n", ((long *)cmd[7])[0] ); // shows little endian
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
 
-   printf( "PT = " );
-   	for(uint8_t idx = 0; idx<9; idx++) {
+    printf( "PT = " );
+    for(uint8_t idx = 0; idx<9; idx++) {
 		printf( "%x ", pt[idx] );
     }
-   printf( "tag = " );
+    printf( "\n" );
+    printf( "tag = " );
    	for(uint8_t idx = 0; idx<9; idx++) {
 		printf( "%x ", tag[idx] );
     }
+    printf( "\n" );
+
+    /////////////////////////////////////
     // Test Cipher in encode mode
-    hw_reg[13] = 1<<0 + // encode mode
-		 1<<4 + // bdi eot
-		 0<<5 + // bdi eoi
-		 1<<8 + // bdi nonce type
-		 0<<1; // eoo
+    /////////////////////////////////////
+
+    hw_reg[13] = 0;
     printf("Key\n");
+    printf("A sts %x\n", hw_reg[6] );
     hw_reg[7] = (long)key; // send a key
-    while( hw_reg[6] & (1<<12) == 0 ); // wait for key send
+    printf("B sts %x\n", hw_reg[6] );
+    hw_reg[13] = MODE_ENC; // put into encode mode
+    printf("C sts %x\n", hw_reg[6] );
+    while( ( hw_reg[6] & STATUS_KEY_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    printf("D sts %x\n", hw_reg[6] );
     printf("Nonce\n");
+    hw_reg[13] = MODE_ENC + BDI_EOT + BDI_TYPE_NONCE;
     hw_reg[11] = (long)npub; // send nonce via bdi
-    while( hw_reg[6] & (1<<16) == 0 ); // wait for bdi send
+    printf("E sts %x\n", hw_reg[6] );
+    while( ( hw_reg[6] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    printf("F sts %x\n", hw_reg[6] );
     hw_reg[4] = 9; // set ad length
-    hw_reg[13] = 1<<0 + // encode mode
-		 1<<4 + // bdi eot
-		 0<<5 + // bdi eoi
-		 2<<8 + // ad type
-		 0<<1; // eoo
+    hw_reg[13] = MODE_ENC + BDI_EOT + BDI_TYPE_AD;
     printf("AD\n");
     hw_reg[11] = (long)ad; // send ad via bdi
-    while( hw_reg[6] & (1<<16) == 0 ); // wait for bdi send
+    printf("G sts %x\n", hw_reg[6] );
+    while( ( hw_reg[6] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    printf("H sts %x\n", hw_reg[6] );
     hw_reg[4] = 9; // set msg length
-    hw_reg[4] = 9; // set ad length
-    hw_reg[13] = 1<<0 + // encode mode
-		 1<<4 + // bdi eot
-		 1<<5 + // bdi eoi
-		 3<<8 + // ad type
-		 0<<1; // eoo
+    hw_reg[13] = MODE_ENC + BDI_EOT + BDI_EOI + BDI_TYPE_MSG;
     printf("MSG\n");
+    printf("I sts %x\n", hw_reg[6] );
    hw_reg[11] = (long)pt; // start BDI
-   hw_reg[9] = (long)pt; // start BDO convert in place
-   while( hw_reg[6] & (1<<16) == 0 ); // wait for bdi send
-   while( hw_reg[6] & (1<<14) == 0 ); // wait for bdo output
+   hw_reg[ 9] = (long)pt; // start BDO convert in place
+    printf("J sts %x\n", hw_reg[6] );
+    while( ( hw_reg[6] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    while( ( hw_reg[6] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    printf("K sts %x\n", hw_reg[6] );
    hw_reg[9] = (long)tag; // start BDO for tag
-   while( hw_reg[6] & (1<<14) == 0 ); // wait for bdo output
+    printf("L sts %x\n", hw_reg[6] );
+    while( ( hw_reg[6] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    printf("M sts %x\n", hw_reg[6] );
    printf( "PT = " );
    	for(uint8_t idx = 0; idx<9; idx++) {
 		printf( "%x ", pt[idx] );
     }
+    printf( "\n" );
    printf( "tag = " );
    	for(uint8_t idx = 0; idx<9; idx++) {
 		printf( "%x ", tag[idx] );
     }
+    printf("N sts %x\n", hw_reg[6] );
+    printf( "\n" );
    
-    
+    return(1);
 
 	
     // test DMA writes
