@@ -92,6 +92,12 @@ int main() {
 #define STATUS_AUTH      (1<<26 )
 #define STATUS_DONE      (1<<25 )
 
+#define REG_CONTROL	13
+#define REG_LENGTH	 4
+#define REG_STATUS	 6
+#define REG_BDO		 9
+#define REG_BDI		11
+#define REG_KEY		 7
 
     // Print out a string
     printf( "CT = " );
@@ -117,42 +123,47 @@ int main() {
     // Test Cipher in encode mode
     /////////////////////////////////////
 
-    hw_reg[13] = 0;
+    hw_reg[REG_CONTROL] = 0;
     printf("Key\n");
     printf("A sts %x\n", hw_reg[6] );
-    hw_reg[7] = (long)key; // send a key
+    hw_reg[REG_KEY    ] = (long)key; // send a key before starting enc
     printf("B sts %x\n", hw_reg[6] );
-    hw_reg[13] = MODE_ENC; // put into encode mode
+    hw_reg[REG_CONTROL] = MODE_ENC; // put into encode mode
     printf("C sts %x\n", hw_reg[6] );
-    while( ( hw_reg[6] & STATUS_KEY_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    while( ( hw_reg[REG_STATUS] & STATUS_KEY_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
     printf("D sts %x\n", hw_reg[6] );
     printf("Nonce\n");
-    hw_reg[13] = MODE_ENC + BDI_EOT + BDI_TYPE_NONCE;
-    hw_reg[11] = (long)npub; // send nonce via bdi
+    hw_reg[REG_LENGTH ] = 16 ; // set nonce length
+    hw_reg[REG_CONTROL] = MODE_ENC + BDI_EOT + BDI_TYPE_NONCE;
+    hw_reg[REG_BDI    ] = (long)npub; // send nonce via bdi
     printf("E sts %x\n", hw_reg[6] );
-    while( ( hw_reg[6] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
     printf("F sts %x\n", hw_reg[6] );
-    hw_reg[4] = 9; // set ad length
-    hw_reg[13] = MODE_ENC + BDI_EOT + BDI_TYPE_AD;
+    hw_reg[REG_LENGTH ] = 9; // set ad length
+    hw_reg[REG_CONTROL] = MODE_ENC + BDI_EOT + BDI_TYPE_AD;
     printf("AD\n");
-    hw_reg[11] = (long)ad; // send ad via bdi
+    hw_reg[REG_BDI    ] = (long)ad; // send ad via bdi
     printf("G sts %x\n", hw_reg[6] );
-    while( ( hw_reg[6] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
     printf("H sts %x\n", hw_reg[6] );
-    hw_reg[4] = 9; // set msg length
-    hw_reg[13] = MODE_ENC + BDI_EOT + BDI_EOI + BDI_TYPE_MSG;
+    hw_reg[REG_LENGTH ] = 9; // set msg length
+    hw_reg[REG_CONTROL] = MODE_ENC + BDI_EOT + BDI_EOI + BDI_TYPE_MSG;
     printf("MSG\n");
     printf("I sts %x\n", hw_reg[6] );
-   hw_reg[11] = (long)pt; // start BDI
-   hw_reg[ 9] = (long)pt; // start BDO convert in place
+    hw_reg[REG_BDO    ] = (long)ct; // start BDO write
+    printf("I2 sts %x\n", hw_reg[6] );
+    hw_reg[REG_BDI    ] = (long)pt; // start BDI
     printf("J sts %x\n", hw_reg[6] );
-    while( ( hw_reg[6] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
-    while( ( hw_reg[6] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
+    while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
     printf("K sts %x\n", hw_reg[6] );
-   hw_reg[9] = (long)tag; // start BDO for tag
+    hw_reg[REG_LENGTH ] = 16; // set tag length (128 bits fixed)
+    hw_reg[REG_BDO    ] = (long)tag; // start BDO for tag
     printf("L sts %x\n", hw_reg[6] );
-    while( ( hw_reg[6] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[6] ); // wait for bdi send
+    while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
     printf("M sts %x\n", hw_reg[6] );
+
+
    printf( "PT = " );
    	for(uint8_t idx = 0; idx<9; idx++) {
 		printf( "%x ", pt[idx] );
