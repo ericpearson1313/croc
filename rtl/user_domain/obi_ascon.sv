@@ -78,7 +78,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.key_ready	( key_ready 	),
 		// connected to bdi read dma and some controls
 		.bdi		( bdi[31:0] 	),
-		.bdi_valid	( {4{bdi_valid}}&bdi_be[3:0] ),
+		.bdi_valid	( {4{link&bdi_valid}}&bdi_be[3:0] ),
 		.bdi_ready	( bdi_ready 	),
 		.bdi_type	( bdi_type[3:0]	), 
 		.bdi_eot	( bdi_last & bdi_eot ),
@@ -88,7 +88,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// connect to bdo write dma
 		.bdo		( bdo[31:0] 	),
 		.bdo_valid	( bdo_valid 	),
-		.bdo_ready	( bdo_ready 	),
+		.bdo_ready	( link&bdo_ready),
 		.bdo_type	( bdo_type[3:0] ),
 		.bdo_eot	( bdo_eot 	),
 		// Control input to finish hash?
@@ -101,8 +101,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	);
 
 	// some hardwired connectoins
-	assign mode[3:0] = ascon_ctrl[11:8];
+	logic lio, link;
+	assign link = ( lio ) ? (bdi_valid & bdi_ready & bdo_valid & bdo_ready) : 1'b1;
 	assign bdo_eoo   = ascon_ctrl[12]; // not sure
+	assign lio       = ascon_ctrl[8]; // link bdi/bdo transfers
 
   //////////////////////////
   // OBI DMA Managers (5)
@@ -146,7 +148,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.awaddr		( sbr_req_i.a.wdata ),
 		.awlen		( length ), 
 		// axi read word stream input
-		.rvalid		( bdo_valid  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
+		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
 		.rdata		( bdo_data )
 	);
@@ -227,7 +229,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.aruser         ( ascon_ctrl[5:0] ), 
 		// axi Write data word stream output 
 		.wvalid		( bdi_valid ),
-		.wready		( bdi_ready ),
+		.wready		( link&bdi_ready ),
 		.wdata		( bdi_data ),
 		.wuser		( { bdi_type[3:0], bdi_eot, bdi_eoi } ),
 		.wbe		( bdi_be ),
@@ -264,6 +266,20 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		raddr  <= (sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.addr[11:2] : raddr; // word regs addr
 		rvalid <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? 1'b1 : 1'b0;
 		rid    <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.aid : rid;
+	end
+
+	// Ascon Mode reg (14)
+	logic [3:0] mode_reg;
+	always_ff @(posedge clk_i) begin
+		if( !rst_ni ) begin
+			mode_reg <= 0; // NOP
+			mode <= 0;
+		end else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==14 ) begin
+			mode_reg <= sbr_req_i.a.wdata[3:0]; // for readback
+			mode     <= sbr_req_i.a.wdata[3:0]; // single cycle pulse
+		end else begin
+			mode	<= 0;
+		end;
 	end
 
 	// length register (3)
