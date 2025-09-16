@@ -100,6 +100,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.done       	( done 		)
 	);
 
+	assign { bdi_type[3:0], bdi_eot, bdi_eoi } = ascon_ctrl[5:0];
+
 	// some hardwired connectoins
 	logic lio, link;
 	assign link = ( lio ) ? (bdi_valid & bdi_ready & bdo_valid & bdo_ready) : 1'b1;
@@ -150,7 +152,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi read word stream input
 		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
-		.rdata		( bdo_data )
+		.rdata		( bdo )
 	);
 	assign status_dma[1] = bdo_ready;
 	assign status_dev[1] = bdo_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10;
@@ -230,8 +232,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi Write data word stream output 
 		.wvalid		( bdi_valid ),
 		.wready		( link&bdi_ready ),
-		.wdata		( bdi_data ),
-		.wuser		( { bdi_type[3:0], bdi_eot, bdi_eoi } ),
+		.wdata		( bdi ),
+		.wuser		( ), //{ bdi_type[3:0], bdi_eot, bdi_eoi } ),
 		.wbe		( bdi_be ),
 		.wlast		( bdi_last )
 	);
@@ -311,8 +313,9 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		                    	  ( raddr==2 ) ? dma_read_data[1] : 
     		                    	  ( raddr==3 ) ? dma_read_data[2] : 
 					  ( raddr==4 ) ? length :
-					  ( raddr==13) ? ascon_ctrl :
 					  ( raddr==6 ) ? status_word :
+					  ( raddr==13) ? ascon_ctrl :
+					  ( raddr==14) ? {28'h0, mode_reg } :
                                                          32'hdeadbeef;
     		sbr_rsp_o.r.rid   	= rid;
     		sbr_rsp_o.rvalid   	= rvalid; 
