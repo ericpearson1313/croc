@@ -45,7 +45,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
   	.sbr_port_obi_rsp_t( mgr_obi_rsp_t ),
   	.NumSbrPorts( 5 ),
   	.NumMaxTrans( 1 )
-  ) _mux_ascon (
+  ) i_mux_ascon (
   	.clk_i( clk_i ),
   	.rst_ni( rst_ni ),
   	.testmode_i( testmode_i ),
@@ -140,7 +140,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 // User Manager/Subordinates
 //-------------------------------------------------------------------------------------------------
 
-  obi_ascon _ascon (
+  obi_ascon i_ascon (
     .clk_i( clk_i ),
     .rst_ni( rst_ni ),
     .testmode_i  ( testmode_i      ),
