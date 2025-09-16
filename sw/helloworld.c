@@ -66,8 +66,8 @@ int main() {
     cmd[7] = (long)pt;
     cmd[8] = (long)tag;
 
-#define BDI_EOT	(1<<0)
-#define BDI_EOI	(1<<1)
+#define BDI_EOT	(1<<1)
+#define BDI_EOI	(1<<0)
 #define BDI_LIO (1<<8)
 #define MODE_ENC 1
 #define BDI_TYPE_NOP   (0<<2)
@@ -130,6 +130,7 @@ int main() {
     printf("Key\n");
     printf("A sts %x\n", hw_reg[6] );
     hw_reg[REG_KEY    ] = (long)key; // send a key before starting enc
+    while( ( hw_reg[REG_STATUS] & STATUS_KEY_DMA ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for key data
     printf("B sts %x\n", hw_reg[6] );
     hw_reg[REG_MODE] = MODE_ENC; // put into encode mode
     printf("C sts %x\n", hw_reg[6] );
@@ -167,6 +168,7 @@ int main() {
     while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ) printf("  sts %x\n", hw_reg[REG_STATUS] ); // wait for bdi send
     printf("M sts %x\n", hw_reg[6] );
 
+    return(1);
 
    printf( "PT = " );
    	for(uint8_t idx = 0; idx<9; idx++) {
@@ -174,13 +176,12 @@ int main() {
     }
     printf( "\n" );
    printf( "tag = " );
-   	for(uint8_t idx = 0; idx<9; idx++) {
+   	for(uint8_t idx = 0; idx<16; idx++) {
 		printf( "%x ", tag[idx] );
     }
-    printf("N sts %x\n", hw_reg[6] );
     printf( "\n" );
+    printf("N sts %x\n", hw_reg[6] );
    
-    return(1);
 
 	
     // test DMA writes
