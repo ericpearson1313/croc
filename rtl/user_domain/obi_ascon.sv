@@ -159,6 +159,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	
 	logic [31:0] axi_wdata;
 	logic axi_wvalid;
+	logic axi_wready;
 	// CMD Read DMA (1)
   	ascon_read_dma _cmd_r (
     		.clk_i		( clk_i ),
@@ -175,13 +176,13 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( axi_wvalid ),
-		.wready		( 1'b1 ),
+		.wready		( axi_wready ), // test assumes this 1'b1 ),
 		.wdata		( axi_wdata ),
 		.wbe		( ),
 		.wlast		( )
 	);
 	assign status_dma[2] = axi_wvalid;
-	assign status_dev[2] = 1'b1;
+	assign status_dev[2] = axi_wready;
 
 
 	// latch the stream output to get the read data word
@@ -312,8 +313,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 					  ( raddr==1 ) ? dma_read_data[0] : 
     		                    	  ( raddr==2 ) ? dma_read_data[1] : 
     		                    	  ( raddr==3 ) ? dma_read_data[2] : 
-					  ( raddr==4 ) ? length :
-					  ( raddr==6 ) ? status_word :
+					  ( raddr==4 ) ? length : ( raddr==6 ) ? status_word :
 					  ( raddr==13) ? ascon_ctrl :
 					  ( raddr==14) ? {28'h0, mode_reg } :
                                                          32'hdeadbeef;
@@ -321,4 +321,121 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		sbr_rsp_o.rvalid   	= rvalid; 
     	end
 
+	// Full command execution
+	// Fed CMD stream from read DMA engine
+
+
+	localparam S_IDLE 		= 0;
+	localparam S_ENC_INIT 		= 1;
+	localparam S_ENC_KEY 		= 2;
+	localparam S_ENC_KEY_WAIT1 	= 3;
+	localparam S_ENC_MODE 		= 4;
+	localparam S_ENC_KEY_WAIT2 	= 5;
+	localparam S_ENC_NONCE		= 6;
+	localparam S_ENC_NONCE_WAIT 	= 7;
+	localparam S_ENC_AD 		= 8;
+	localparam S_ENC_AD_WAIT 	= 9;
+	localparam S_ENC_MSG 		= 10;
+	localparam S_ENC_MSG_WAIT	= 11;
+	localparam S_ENC_TAG 		= 12;
+	localparam S_ENC_TAG_WAIT 	= 13;
+	localparam S_ENC_DONE_WAIT 	= 14;
+
+	logic [7:0] state, state_nx;
+	always_comb begin
+		case ( state ) 
+		S_IDLE:          begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_KEY        : S_IDLE          ; end
+		S_ENC_KEY:       begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_KEY_WAIT1  : S_ENC_KEY       ; end
+		S_ENC_KEY_WAIT1: begin state_nx = ( key_valid               ) ? S_ENC_MODE       : S_ENC_KEY_WAIT1 ; end
+		S_ENC_MODE:      begin state_nx =                               S_ENC_KEY_WAIT2                    ; end
+		S_ENC_KEY_WAIT2: begin state_nx = ( status_cmd[3]           ) ? S_ENC_NONCE      : S_ENC_KEY_WAIT2 ; end
+		S_ENC_NONCE :    begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_NONCE_WAIT : S_ENC_NONCE     ; end
+		S_ENC_NONCE_WAIT:begin state_nx = ( status_cmd[4]           ) ? S_ENC_AD         : S_ENC_NONCE_WAIT; end
+		S_ENC_AD :       begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_AD_WAIT    : S_ENC_AD        ; end
+		S_ENC_AD_WAIT :  begin state_nx = ( status_cmd[4]           ) ? S_ENC_MSG        : S_ENC_AD_WAIT   ; end
+		S_ENC_MSG :      begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_MSG_WAIT   : S_ENC_MSG       ; end
+		S_ENC_MSG_WAIT : begin state_nx = ( status_cmd[4] && 
+                                                    status_cmd[1]            )? S_ENC_TAG        : S_ENC_MSG_WAIT  ; end
+		S_ENC_TAG :      begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_TAG_WAIT   : S_ENC_TAG       ; end
+		S_ENC_TAG_WAIT : begin state_nx = ( status_cmd[1]           ) ? S_ENC_DONE_WAIT  : S_ENC_TAG_WAIT  ; end
+		S_ENC_DONE_WAIT :begin state_nx = ( done                    ) ? S_IDLE           : S_ENC_DONE_WAIT ; end
+		endcase
+	end
+
+	always_ff @(posedge clk_i ) begin
+		if( !rst_ni ) begin
+			state <= S_IDLE;	
+		end else begin
+			state <= state_nx;	
+		end
+	end
+
+	// Drive axi_wready
+	assign axi_wready = ( state == S_IDLE      ||
+			      state == S_ENC_KEY   ||
+			      state == S_ENC_NONCE ||
+			      state == S_ENC_AD    ||
+			      state == S_ENC_MSG   ||
+			      state == S_ENC_TAG   ) ? 1'b1 : 1'b0;
+
+	// Incomming Command words linked to write DMA command registers 
+	localparam AUTH_DMA = 0;
+	localparam BDO_DMA  = 1;
+	localparam KEY_DMA  = 3;
+	localparam BDI_DMA  = 4;
+	logic [4:0] link_cmd;
+	always_comb begin
+		link_cmd = 0;
+		if( axi_wvalid && axi_wready ) begin
+			link_cmd[BDI_DMA] = ( state == S_ENC_NONCE ||
+					      state == S_ENC_AD    ||
+					      state == S_ENC_MSG   ) ? 1'b1 : 1'b0;
+			link_cmd[KEY_DMA] = ( state == S_ENC_KEY   ) ? 1'b1 : 1'b0;
+			link_cmd[BDI_DMA] = ( state == S_ENC_MSG   ||
+					      state == S_ENC_MSG   ) ? 1'b1 : 1'b0;
+		end
+	end
+
+	// reg incomming command lengths 
+	logic [31:0] msg_len;
+	logic [31:0] ad_len;
+	always_ff @(posedge clk_i) begin
+		if( state == S_IDLE && axi_wvalid && axi_wready ) begin
+			msg_len <= { 20'h0, axi_wdata[11:0] };
+			ad_len <= { 20'h0, axi_wdata[23:12] };
+		end
+	end
+
+	// Setup other data for cmd
+	// Length, BDI_type, LIO, EOI, EOT
+	logic [3:0] cmd_type;
+	logic [31:0] cmd_len;
+	logic cmd_lio, cmd_eoi, cmd_eot;
+	always_comb begin
+		cmd_type =( state == S_ENC_NONCE ) ? 4'h1 :
+			  ( state == S_ENC_AD    ) ? 4'h2 :
+			  ( state == S_ENC_MSG   ) ? 4'h3 : 4'h0;
+		cmd_lio = ( state == S_ENC_MSG      || 
+                            state == S_ENC_MSG_WAIT ) ? 1'b1 : 1'b0;
+		cmd_eoi = ( state == S_ENC_MSG || 
+                            state == S_ENC_AD    && msg_len == 0 || 
+                            state == S_ENC_NONCE && msg_len == 0 && ad_len == 0 ) ? 1'b1 : 1'b0;
+		cmd_eot = ( state == S_ENC_NONCE  ||
+                            state == S_ENC_AD ||
+			    state == S_ENC_MSG ) ? 1'b1 : 1'b0;
+		cmd_len = ( state == S_ENC_KEY ) ? 16 :
+			  ( state == S_ENC_NONCE ) ? 16 :
+			  ( state == S_ENC_AD ) ? ad_len :
+			  ( state == S_ENC_MSG ) ? msg_len :
+			  ( state == S_ENC_TAG ) ? 16 : 0;
+	end
+		
+
+
+
+	
+		
+
+	
+	
 endmodule
