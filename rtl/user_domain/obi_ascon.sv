@@ -124,10 +124,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		.mgr_req_o   	( mgr_req_o[0] ),
     		.mgr_rsp_i   	( mgr_rsp_i[0] ),
 		// input dma write address, length (bytes)
-		.awvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==5 ), 
+		.awvalid	( link_cmd[0] | (sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==5) ), 
 		.awready	( status_cmd[0] ),
-		.awaddr		( sbr_req_i.a.wdata ),
-		.awlen		( length ),  // should be hw as 1 or 4
+		.awaddr		( link_cmd[0] ? axi_wdata : sbr_req_i.a.wdata ),
+		.awlen		( link_cmd[0] ? cmd_len : length ),  // should be hw as 1 or 4
 		// axi read word stream input
 		.rvalid		(  auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
 		.rready		(  auth_ready ),
@@ -145,10 +145,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		.mgr_req_o   	( mgr_req_o[1] ),
     		.mgr_rsp_i   	( mgr_rsp_i[1] ),
 		// input dma write address, length (bytes)
-		.awvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==9 ), 
+		.awvalid	( link_cmd[1] | ( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==9 )), 
 		.awready	( status_cmd[1] ),
-		.awaddr		( sbr_req_i.a.wdata ),
-		.awlen		( length ), 
+		.awaddr		( link_cmd[1] ? axi_wdata : sbr_req_i.a.wdata ),
+		.awlen		( link_cmd[1] ? cmd_len : length ), 
 		// axi read word stream input
 		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
@@ -173,7 +173,6 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.arready	( status_cmd[2] ),
 		.araddr		( sbr_req_i.a.wdata ),
 		.arlen		( length ), // read a word TBD 4 or 0xfffffff?
-		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( axi_wvalid ),
 		.wready		( axi_wready ), // test assumes this 1'b1 ),
@@ -201,11 +200,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		.mgr_req_o   	( mgr_req_o[3] ),
     		.mgr_rsp_i   	( mgr_rsp_i[3] ),
 		// input dma address, length (bytes)
-		.arvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==7 ), 
+		.arvalid	( link_cmd[3] | ( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==7) ), 
 		.arready	( status_cmd[3] ),
-		.araddr		( sbr_req_i.a.wdata ),
+		.araddr		( link_cmd[3] ? axi_wdata : sbr_req_i.a.wdata ),
 		.arlen		( 16 ), 
-		.aruser         ( 0 ), 
 		// axi Write data word stream output 
 		.wvalid		( key_valid ),
 		.wready		( key_ready ),
@@ -225,16 +223,14 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
     		.mgr_req_o   	( mgr_req_o[4] ),
     		.mgr_rsp_i   	( mgr_rsp_i[4] ),
 		// input dm a address, length (bytes)
-		.arvalid	( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==11), 
+		.arvalid	( link_cmd[4] | (sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==11) ), 
 		.arready	( status_cmd[4] ),
-		.araddr		( sbr_req_i.a.wdata ),
-		.arlen		( length ), 
-		.aruser         ( ascon_ctrl[5:0] ), 
+		.araddr		( link_cmd[4] ? axi_wdata : sbr_req_i.a.wdata ),
+		.arlen		( link_cmd[4] ? cmd_len : length ), 
 		// axi Write data word stream output 
 		.wvalid		( bdi_valid ),
 		.wready		( link&bdi_ready ),
 		.wdata		( bdi ),
-		.wuser		( ), //{ bdi_type[3:0], bdi_eot, bdi_eoi } ),
 		.wbe		( bdi_be ),
 		.wlast		( bdi_last )
 	);
@@ -281,7 +277,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 			mode_reg <= sbr_req_i.a.wdata[3:0]; // for readback
 			mode     <= sbr_req_i.a.wdata[3:0]; // single cycle pulse
 		end else begin
-			mode	<= 0;
+			mode	<= ( state == S_ENC_MODE ) ? cmd_mode : 4'h0;
 		end;
 	end
 
@@ -399,10 +395,12 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	// reg incomming command lengths 
 	logic [31:0] msg_len;
 	logic [31:0] ad_len;
+	logic [7:0] command;
 	always_ff @(posedge clk_i) begin
 		if( state == S_IDLE && axi_wvalid && axi_wready ) begin
 			msg_len <= { 20'h0, axi_wdata[11:0] };
 			ad_len <= { 20'h0, axi_wdata[23:12] };
+			command <= axi_wdata[31:24];
 		end
 	end
 
@@ -411,23 +409,24 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic [3:0] cmd_type;
 	logic [31:0] cmd_len;
 	logic cmd_lio, cmd_eoi, cmd_eot;
+	logic [3:0] cmd_mode;
 	always_comb begin
-		cmd_type =( state == S_ENC_NONCE ) ? 4'h1 :
-			  ( state == S_ENC_AD    ) ? 4'h2 :
-			  ( state == S_ENC_MSG   ) ? 4'h3 : 4'h0;
-		cmd_lio = ( state == S_ENC_MSG      || 
-                            state == S_ENC_MSG_WAIT ) ? 1'b1 : 1'b0;
-		cmd_eoi = ( state == S_ENC_MSG || 
-                            state == S_ENC_AD    && msg_len == 0 || 
-                            state == S_ENC_NONCE && msg_len == 0 && ad_len == 0 ) ? 1'b1 : 1'b0;
-		cmd_eot = ( state == S_ENC_NONCE  ||
-                            state == S_ENC_AD ||
-			    state == S_ENC_MSG ) ? 1'b1 : 1'b0;
-		cmd_len = ( state == S_ENC_KEY ) ? 16 :
+		cmd_mode =( state == S_ENC_MODE ) ? 4'h1 : 4'h0;
+		cmd_type =( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT ) ? 4'h1 :
+			  ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    ) ? 4'h2 :
+			  ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ) ? 4'h3 : 4'h0;
+		cmd_lio = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ) ? 1'b1 : 1'b0;
+		cmd_eoi = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ||
+                          ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    ) && msg_len == 0 || 
+                          ( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT ) && msg_len == 0 && ad_len == 0 ) ? 1'b1 : 1'b0;
+		cmd_eot = ( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT ||
+                            state == S_ENC_AD    || state == S_ENC_AD_WAIT    ||
+			    state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ) ? 1'b1 : 1'b0;
+		cmd_len = ( state == S_ENC_KEY   ) ? 16 :
 			  ( state == S_ENC_NONCE ) ? 16 :
-			  ( state == S_ENC_AD ) ? ad_len :
-			  ( state == S_ENC_MSG ) ? msg_len :
-			  ( state == S_ENC_TAG ) ? 16 : 0;
+			  ( state == S_ENC_AD    ) ? ad_len :
+			  ( state == S_ENC_MSG   ) ? msg_len :
+			  ( state == S_ENC_TAG   ) ? 16 : 0 ;
 	end
 		
 

@@ -57,15 +57,19 @@ int main() {
     // Create ASCON Instructions
     printf("ASCON test\n");
     long cmd[10];
-    cmd[0] = 1; // OP_ENCODE;
+    cmd[0] = (1<<24) + (9<<12) + (9<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
     cmd[1] = (long)key;
     cmd[2] = (long)npub;
-    cmd[3] = 9; // ad len
-    cmd[4] = (long)ad;
-    cmd[5] = 9; // msg len
-    cmd[6] = (long)pt;
-    cmd[7] = (long)pt;
-    cmd[8] = (long)tag;
+    cmd[3] = (long)ad;
+    cmd[4] = (long)pt;
+    cmd[5] = (long)tag;
+/*
+    hw_reg[4] = 6*4; // command length
+    printf("Go\n");
+    hw_reg[1] = (long)cmd; // Start command list
+    while( hw_reg[6] & (1<24) == 0 ) printf(" sts %x\n", hw_reg[6] );
+    printf("Done\n");
+*/
 
 #define BDI_EOT	(1<<1)
 #define BDI_EOI	(1<<0)
@@ -104,12 +108,8 @@ int main() {
 #define REG_KEY		 7
 
     // Print out a string
-    printf( "PT = " );
-    for(uint8_t idx = 0; idx<9; idx++) {
-	printf( "%x ", ((char *)cmd[7])[idx] );
-    }
     printf("\n");
-    printf( "CT long = %x\n", ((long *)cmd[7])[0] ); // shows little endian
+    printf( "CT long = %x\n", ((long *)ct)[0] ); // shows little endian
     printf( "MAGIC = %x\n", *((long *)0x20000000) );
 
     printf( "PT = " );
@@ -171,6 +171,7 @@ int main() {
 		}
 	printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
     uart_write_flush();
+
     return(1);
 
 	
