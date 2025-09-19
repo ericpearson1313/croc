@@ -63,49 +63,31 @@ int main() {
     cmd[3] = (long)ad;
     cmd[4] = (long)pt;
     cmd[5] = (long)tag;
-/*
-    hw_reg[4] = 6*4; // command length
+
     printf("Go\n");
+    hw_reg[4] = 6*4; // command length
     hw_reg[1] = (long)cmd; // Start command list
-    while( hw_reg[6] & (1<24) == 0 ) printf(" sts %x\n", hw_reg[6] );
+    while( (hw_reg[6] & (1<<8)) == 0 ); // wait for cmds to be issued
+    while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
     printf("Done\n");
-*/
+    	int err;
+	err = 0;
+	// pt should = ct
+	for( int ii = 0; ii < 9; ii++ )
+		if( pt[ii] != ct[ii] ) {
+			printf("idx %x PT(%x) != CT(%x)\n", ii, pt[ii], ct[ii] );
+			err++;
+		}
+	// tag = otag
+	for( int ii = 0; ii < 16; ii++ )
+		if( tag[ii] != otag[ii^3] ) {
+			printf("idx %x tag(%x) != otag(%x)\n", ii, tag[ii], otag[ii] );
+			err++;
+		}
+	printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
 
-#define BDI_EOT	(1<<1)
-#define BDI_EOI	(1<<0)
-#define BDI_LIO (1<<8)
-#define MODE_ENC 1
-#define BDI_TYPE_NOP   (0<<2)
-#define BDI_TYPE_NONCE (1<<2)
-#define BDI_TYPE_AD    (2<<2)
-#define BDI_TYPE_MSG   (3<<2)
-
-
-#define STATUS_BDI_DEV  (4<<16)
-#define STATUS_BDI_DMA  (2<<16)
-#define STATUS_BDI_CMD  (1<<16)
-#define STATUS_KEY_DEV  (4<<12)
-#define STATUS_KEY_DMA  (2<<12)
-#define STATUS_KEY_CMD  (1<<12)
-#define STATUS_CMD_DEV  (4<<8 )
-#define STATUS_CMD_DMA  (2<<8 )
-#define STATUS_CMD_CMD  (1<<8 )
-#define STATUS_BDO_DEV  (4<<4 )
-#define STATUS_BDO_DMA  (2<<4 )
-#define STATUS_BDO_CMD  (1<<4 )
-#define STATUS_AUTH_DEV  (4<<0 )
-#define STATUS_AUTH_DMA  (2<<0 )
-#define STATUS_AUTH_CMD  (1<<0 )
-#define STATUS_AUTH      (1<<26 )
-#define STATUS_DONE      (1<<25 )
-
-#define REG_CONTROL	13
-#define REG_MODE	14
-#define REG_LENGTH	 4
-#define REG_STATUS	 6
-#define REG_BDO		 9
-#define REG_BDI		11
-#define REG_KEY		 7
+    uart_write_flush();
+    return(1);
 
     // Print out a string
     printf("\n");
@@ -127,50 +109,6 @@ int main() {
     // Test Cipher in encode mode
     /////////////////////////////////////
 
-    // This test mimics what the automated commands will perform
-
-    printf("Encode test\n");
-    hw_reg[REG_CONTROL] = 0;
-    hw_reg[REG_KEY    ] = (long)key; // send a key before starting enc
-    while( ( hw_reg[REG_STATUS] & STATUS_KEY_DMA ) == 0  ); // wait for key data to start
-    hw_reg[REG_MODE] = MODE_ENC; // put into encode mode
-    while( ( hw_reg[REG_STATUS] & STATUS_KEY_CMD ) == 0  ); // wait for key cmd complete
-    hw_reg[REG_LENGTH ] = 16 ; // set nonce length
-    hw_reg[REG_CONTROL] = BDI_EOT + BDI_TYPE_NONCE;  // set to 1 message nonce
-    hw_reg[REG_BDI    ] = (long)npub; // send nonce via bdi
-    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ); // wait for nonce bdi to complete
-    hw_reg[REG_LENGTH ] = 9; // set ad length
-    hw_reg[REG_CONTROL] = BDI_EOT + BDI_TYPE_AD; // set to AS
-    hw_reg[REG_BDI    ] = (long)ad; // send ad via bdi
-    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ); // wait for bdi send
-    hw_reg[REG_LENGTH ] = 9; // set msg length
-    hw_reg[REG_CONTROL] = BDI_LIO + BDI_EOT + BDI_EOI + BDI_TYPE_MSG; // Set to msg type, last input, link in-out
-    hw_reg[REG_BDO    ] = (long)pt; // start BDO write
-    hw_reg[REG_BDI    ] = (long)pt; // start BDI
-    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ); // wait BDI complete
-    while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ); // wait BDO complete
-    hw_reg[REG_CONTROL] = 0; // turn off LIO 
-    hw_reg[REG_LENGTH ] = 16; // set tag length (128 bits fixed)
-    hw_reg[REG_BDO    ] = (long)tag; // start BDO for tag
-    while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ); // wait for BDO write complete
-    while( ( hw_reg[REG_STATUS] & STATUS_DONE ) == 0  ); // wait/confirm cipher is done
-    printf("Done\n");
-    	int err;
-	err = 0;
-	// pt should = ct
-	for( int ii = 0; ii < 9; ii++ )
-		if( pt[ii] != ct[ii] ) {
-			printf("idx %x PT(%x) != CT(%x)\n", ii, pt[ii], ct[ii] );
-			err++;
-		}
-	// tag = otag
-	for( int ii = 0; ii < 16; ii++ )
-		if( tag[ii] != otag[ii^3] ) {
-			printf("idx %x tag(%x) != otag(%x)\n", ii, tag[ii], otag[ii] );
-			err++;
-		}
-	printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
-    uart_write_flush();
 
     return(1);
 
@@ -224,6 +162,91 @@ int main() {
     printf("Tocking\n");
     uart_write_flush();
     return 1;
+}
+
+int test_encode_low_level( long *hw_reg, char *key, char *npub, char *ad, char *pt, char *tag, int len_ad, int len_msg )
+{
+	int err = 0;
+#define BDI_EOT	(1<<1)
+#define BDI_EOI	(1<<0)
+#define BDI_LIO (1<<8)
+#define MODE_ENC 1
+#define BDI_TYPE_NOP   (0<<2)
+#define BDI_TYPE_NONCE (1<<2)
+#define BDI_TYPE_AD    (2<<2)
+#define BDI_TYPE_MSG   (3<<2)
+
+
+#define STATUS_BDI_DEV  (4<<16)
+#define STATUS_BDI_DMA  (2<<16)
+#define STATUS_BDI_CMD  (1<<16)
+#define STATUS_KEY_DEV  (4<<12)
+#define STATUS_KEY_DMA  (2<<12)
+#define STATUS_KEY_CMD  (1<<12)
+#define STATUS_CMD_DEV  (4<<8 )
+#define STATUS_CMD_DMA  (2<<8 )
+#define STATUS_CMD_CMD  (1<<8 )
+#define STATUS_BDO_DEV  (4<<4 )
+#define STATUS_BDO_DMA  (2<<4 )
+#define STATUS_BDO_CMD  (1<<4 )
+#define STATUS_AUTH_DEV  (4<<0 )
+#define STATUS_AUTH_DMA  (2<<0 )
+#define STATUS_AUTH_CMD  (1<<0 )
+#define STATUS_AUTH      (1<<26 )
+#define STATUS_DONE      (1<<25 )
+
+#define REG_CONTROL	13
+#define REG_MODE	14
+#define REG_LENGTH	 4
+#define REG_STATUS	 6
+#define REG_BDO		 9
+#define REG_BDI		11
+#define REG_KEY		 7
+
+    // This test mimics what the automated commands will perform
+
+    printf("Encode test\n");
+    hw_reg[REG_CONTROL] = 0;
+    hw_reg[REG_KEY    ] = (long)key; // send a key before starting enc
+    while( ( hw_reg[REG_STATUS] & STATUS_KEY_DMA ) == 0  ); // wait for key data to start
+    hw_reg[REG_MODE] = MODE_ENC; // put into encode mode
+    while( ( hw_reg[REG_STATUS] & STATUS_KEY_CMD ) == 0  ); // wait for key cmd complete
+    hw_reg[REG_LENGTH ] = 16 ; // set nonce length
+    hw_reg[REG_CONTROL] = BDI_EOT + BDI_TYPE_NONCE;  // set to 1 message nonce
+    hw_reg[REG_BDI    ] = (long)npub; // send nonce via bdi
+    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ); // wait for nonce bdi to complete
+    hw_reg[REG_LENGTH ] = len_ad; // set ad length
+    hw_reg[REG_CONTROL] = BDI_EOT + BDI_TYPE_AD; // set to AS
+    hw_reg[REG_BDI    ] = (long)ad; // send ad via bdi
+    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ); // wait for bdi send
+    hw_reg[REG_LENGTH ] = len_msg; // set msg length
+    hw_reg[REG_CONTROL] = BDI_LIO + BDI_EOT + BDI_EOI + BDI_TYPE_MSG; // Set to msg type, last input, link in-out
+    hw_reg[REG_BDO    ] = (long)pt; // start BDO write
+    hw_reg[REG_BDI    ] = (long)pt; // start BDI
+    while( ( hw_reg[REG_STATUS] & STATUS_BDI_CMD ) == 0  ); // wait BDI complete
+    while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ); // wait BDO complete
+    hw_reg[REG_CONTROL] = 0; // turn off LIO 
+    hw_reg[REG_LENGTH ] = 16; // set tag length (128 bits fixed)
+    hw_reg[REG_BDO    ] = (long)tag; // start BDO for tag
+    while( ( hw_reg[REG_STATUS] & STATUS_BDO_CMD ) == 0  ); // wait for BDO write complete
+    while( ( hw_reg[REG_STATUS] & STATUS_DONE ) == 0  ); // wait/confirm cipher is done
+    printf("Done\n");
+	// pt should = ct
+	for( int ii = 0; ii < 9; ii++ )
+		if( pt[ii] != ct[ii] ) {
+			printf("idx %x PT(%x) != CT(%x)\n", ii, pt[ii], ct[ii] );
+			err++;
+		}
+	// tag = otag
+	for( int ii = 0; ii < 16; ii++ )
+		if( tag[ii] != otag[ii^3] ) {
+			printf("idx %x tag(%x) != otag(%x)\n", ii, tag[ii], otag[ii] );
+			err++;
+		}
+	printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
+    uart_write_flush();
+    uart_write_flush();
+    return( err );
 }
 
 int test_dma_read( char *ptr, int max_len ) {

@@ -100,13 +100,13 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.done       	( done 		)
 	);
 
-	assign { bdi_type[3:0], bdi_eot, bdi_eoi } = ascon_ctrl[5:0];
+	assign { bdi_type[3:0], bdi_eot, bdi_eoi } = ascon_ctrl[5:0] | { cmd_type[3:0], cmd_eot, cmd_eoi };
 
 	// some hardwired connectoins
 	logic lio, link;
 	assign link = ( lio ) ? (bdi_valid & bdi_ready & bdo_valid & bdo_ready) : 1'b1;
 	assign bdo_eoo   = ascon_ctrl[12]; // not sure
-	assign lio       = ascon_ctrl[8]; // link bdi/bdo transfers
+	assign lio       = ascon_ctrl[8] | cmd_lio; // link bdi/bdo transfers
 
   //////////////////////////
   // OBI DMA Managers (5)
@@ -387,8 +387,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 					      state == S_ENC_AD    ||
 					      state == S_ENC_MSG   ) ? 1'b1 : 1'b0;
 			link_cmd[KEY_DMA] = ( state == S_ENC_KEY   ) ? 1'b1 : 1'b0;
-			link_cmd[BDI_DMA] = ( state == S_ENC_MSG   ||
-					      state == S_ENC_MSG   ) ? 1'b1 : 1'b0;
+			link_cmd[BDO_DMA] = ( state == S_ENC_MSG   ||
+					      state == S_ENC_TAG   ) ? 1'b1 : 1'b0;
 		end
 	end
 
