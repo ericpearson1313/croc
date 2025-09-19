@@ -45,6 +45,7 @@ char pt[9] = { 0x32, 0x3B, 0x41, 0xEE, 0x00, 0xAE, 0x8A, 0x14, 0xAA };
 char ct[9] = { 0x3C, 0x71, 0xC7, 0xBA, 0xDE, 0x48, 0x01, 0x2E, 0x1D };
 char otag[16] = { 0xB2, 0x6E, 0x66, 0xA8, 0xA5, 0x5D, 0x6A, 0x93, 0x28, 0xD8, 0xD0, 0x5B, 0xC1, 0x67, 0x8A, 0x3E };
 char tag[16];
+char auth[4];
 
 int main() {
     uart_init(); // setup the uart peripheral
@@ -56,20 +57,41 @@ int main() {
 
     // Create ASCON Instructions
     printf("ASCON test\n");
-    long cmd[10];
-    cmd[0] = (1<<24) + (9<<12) + (9<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    long cmd[20];
+    int ad_len = 9;
+    int msg_len = 9;
+	// Encode it
+    cmd[0] = (1/*ENC*/<<24) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
     cmd[1] = (long)key;
     cmd[2] = (long)npub;
     cmd[3] = (long)ad;
     cmd[4] = (long)pt;
     cmd[5] = (long)tag;
+	// Decode and Auth
+    cmd[6] = (2/*DEC*/<<24) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[7] = (long)key;
+    cmd[8] = (long)npub;
+    cmd[9] = (long)ad;
+    cmd[10]= (long)pt;
+    cmd[11]= (long)tag;
+    cmd[12]= (long)auth;
+	// Encode it again
+    cmd[13] = (1/*ENC*/<<24) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[14] = (long)key;
+    cmd[15] = (long)npub;
+    cmd[16] = (long)ad;
+    cmd[17] = (long)pt;
+    cmd[18] = (long)tag;
 
     printf("Go\n");
-    hw_reg[4] = 6*4; // command length
+    hw_reg[4] = 19<<2; // command length
     hw_reg[1] = (long)cmd; // Start command list
     while( (hw_reg[6] & (1<<8)) == 0 ); // wait for cmds to be issued
     while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
     printf("Done\n");
+    for( int ii = 0; ii < 4; ii++ ) 
+	putchar( auth[ii] );
+    printf(" Auth %x\n", *(long *)auth );
     	int err;
 	err = 0;
 	// pt should = ct
