@@ -465,7 +465,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		cmd_type =( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT || state == S_DEC_NONCE || state == S_DEC_NONCE_WAIT ) ? 4'h1 :
 			  ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    || state == S_DEC_AD    || state == S_DEC_AD_WAIT    ) ? 4'h2 :
 			  ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ) ? 4'h3 : 
-                          ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ) ? 4'h4 : 4'h0;
+                          ( state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ) ? 4'h4 : 4'h0;
 		cmd_lio = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ) ? 1'b1 : 1'b0;
 		cmd_eoi = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ||
                             state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ||

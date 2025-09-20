@@ -61,14 +61,14 @@ int main() {
     int ad_len = 9;
     int msg_len = 9;
 	// Encode it
-    cmd[0] = (1/*ENC*/<<24) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[0] = (1/*ENC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
     cmd[1] = (long)key;
     cmd[2] = (long)npub;
     cmd[3] = (long)ad;
     cmd[4] = (long)pt;
     cmd[5] = (long)tag;
 	// Decode and Auth
-    cmd[6] = (2/*DEC*/<<24) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[6] = (2/*DEC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
     cmd[7] = (long)key;
     cmd[8] = (long)npub;
     cmd[9] = (long)ad;
@@ -76,7 +76,7 @@ int main() {
     cmd[11]= (long)tag;
     cmd[12]= (long)auth;
 	// Encode it again
-    cmd[13] = (1/*ENC*/<<24) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[13] = (1/*ENC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
     cmd[14] = (long)key;
     cmd[15] = (long)npub;
     cmd[16] = (long)ad;
@@ -84,11 +84,16 @@ int main() {
     cmd[18] = (long)tag;
 
     printf("Go\n");
-    hw_reg[4] = 19<<2; // command length
+    hw_reg[4] = 13<<2; // command length
     hw_reg[1] = (long)cmd; // Start command list
-    while( (hw_reg[6] & (1<<8)) == 0 ); // wait for cmds to be issued
-    while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
+	printf("sts %x\n", hw_reg[6] );
+	printf("sts %x\n", hw_reg[6] );
+	printf("sts %x\n", hw_reg[6] );
+    //while( (hw_reg[6] & (1<<8)) == 0 ); // wait for cmds to be issued
+    ////while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
     printf("Done\n");
+    uart_write_flush();
+    return(1); ///////////////////////
     for( int ii = 0; ii < 4; ii++ ) 
 	putchar( auth[ii] );
     printf(" Auth %x\n", *(long *)auth );
