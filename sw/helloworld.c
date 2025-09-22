@@ -46,6 +46,9 @@ char ct[9] = { 0x3C, 0x71, 0xC7, 0xBA, 0xDE, 0x48, 0x01, 0x2E, 0x1D };
 char otag[16] = { 0xB2, 0x6E, 0x66, 0xA8, 0xA5, 0x5D, 0x6A, 0x93, 0x28, 0xD8, 0xD0, 0x5B, 0xC1, 0x67, 0x8A, 0x3E };
 char tag[16];
 char auth[4];
+char hash[32];
+char ohash[32] = { 0xFB, 0xE3, 0x34, 0x4F, 0xE7, 0x91, 0xB5, 0x29, 0x89, 0xFD, 0x4C, 0x22, 0x05, 0x94, 0xDA, 0xAA, 
+                   0x72, 0x51, 0x6F, 0x55, 0x12, 0x2A, 0xBF, 0x75, 0xFC, 0x38, 0xAB, 0xF0, 0xA1, 0xBA, 0xB0, 0x75 };
 
 int main() {
     uart_init(); // setup the uart peripheral
@@ -57,9 +60,9 @@ int main() {
 
     // Create ASCON Instructions
     printf("ASCON test\n");
-    long cmd[20];
-    int ad_len = 9;
-    int msg_len = 9;
+    long cmd[30];
+    int  ad_len = 9;
+    int  msg_len = 9;
 	// Encode it
     cmd[0] = (1/*ENC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
     cmd[1] = (long)key;
@@ -82,6 +85,10 @@ int main() {
     cmd[16] = (long)ad;
     cmd[17] = (long)pt;
     cmd[18] = (long)tag;
+	// Hash
+    cmd[19] = (3/*HASH*/<<28) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[20] = (long)key; // use first 9 bytes of it as msg
+    cmd[21] = (long)hash;
 
     printf("Go\n");
     hw_reg[4] = 13<<2; // command length
