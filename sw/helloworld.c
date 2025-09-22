@@ -91,7 +91,7 @@ int main() {
     cmd[21] = (long)hash;
 
     printf("Go\n");
-    hw_reg[4] = 13<<2; // command length
+    hw_reg[4] = 22<<2; // command length
     hw_reg[1] = (long)cmd; // Start command list
 	printf("sts %x\n", hw_reg[6] );
 	printf("sts %x\n", hw_reg[6] );

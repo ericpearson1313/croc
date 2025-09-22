@@ -80,7 +80,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.bdi		( bdi[31:0] 	),
 		.bdi_valid	( {4{link&bdi_valid}}&bdi_be[3:0] ),
 		.bdi_ready	( bdi_ready 	),
-		.bdi_type	( bdi_type[3:0]	), 
+		.bdi_type	( {4{link&bdi_valid}}&bdi_type[3:0]), 
 		.bdi_eot	( bdi_last & bdi_eot ),
 		.bdi_eoi	( bdi_last & bdi_eoi ),
 		// mode control input
@@ -278,7 +278,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 			mode     <= sbr_req_i.a.wdata[3:0]; // single cycle pulse
 		end else begin
 			mode	<= ( state == S_ENC_MODE ||
-				     state == S_DEC_MODE ) ? cmd_mode : 4'h0;
+				     state == S_DEC_MODE ||
+                                     state == S_HASH_MODE ) ? cmd_mode : 4'h0;
 		end;
 	end
 
@@ -354,17 +355,18 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	localparam S_DEC_AUTH_WAIT 	= 35;
 	localparam S_DEC_DONE_WAIT 	= 36;
 	// Hash
-	localparam S_HASH_MODE 		= 37;
-	localparam S_HASH_MSG 		= 38;
-	localparam S_HASH_MSG_WAIT	= 39;
-	localparam S_HASH_HASH 		= 40;
-	localparam S_HASH_HASH_WAIT 	= 41;
+	localparam S_HASH_MODE 		= 40;
+	localparam S_HASH_MSG 		= 41;
+	localparam S_HASH_MSG_WAIT	= 42;
+	localparam S_HASH_HASH 		= 43;
+	localparam S_HASH_HASH_WAIT 	= 44;
 
 	logic [7:0] state, state_nx;
 	always_comb begin
 		case ( state ) 
 		S_IDLE:          begin state_nx = ( axi_wvalid && axi_wready && axi_wdata[31:28]==1 ) ? S_ENC_KEY  : 
-                                                  ( axi_wvalid && axi_wready && axi_wdata[31:28]==2 ) ? S_DEC_KEY  : S_IDLE ; end
+                                                  ( axi_wvalid && axi_wready && axi_wdata[31:28]==2 ) ? S_DEC_KEY  : 
+                                                  ( axi_wvalid && axi_wready && axi_wdata[31:28]==3 ) ? S_HASH_MODE : S_IDLE ; end
 		// Encode
 		S_ENC_KEY:       begin state_nx = ( axi_wvalid && axi_wready) ? S_ENC_KEY_WAIT1  : S_ENC_KEY       ; end
 		S_ENC_KEY_WAIT1: begin state_nx = ( key_valid               ) ? S_ENC_MODE       : S_ENC_KEY_WAIT1 ; end
