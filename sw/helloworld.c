@@ -105,13 +105,18 @@ int main() {
     printf("Go\n");
     hw_reg[4] = 13<<2; // command length
     hw_reg[1] = (long)cmd; // Start command list
-    while( (hw_reg[6] & 0x11111) != 0x11111 ); // wait for all dma's to finish 
+    //while( (hw_reg[6] & 0x11111) != 0x11111 ); // wait for all dma's to finish 
     //while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
     printf("Done\n");
     printf("Auth %x [", *(long *)auth );
     for( int ii = 0; ii < 4; ii++ ) 
 	putchar( auth[3-ii] );
     printf("]\n");
+    printf( "PT = " );
+    for(uint8_t idx = 0; idx<9; idx++) {
+		printf( "%x ", pt[idx] );
+    }
+    printf( "\n" );
     uart_write_flush();
     return(1); ///////////////////////
     printf(" Auth %x\n", *(long *)auth );

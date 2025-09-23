@@ -69,7 +69,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
 	// ASCON core from github.com/rprimas/ascon-verilog
 	// Note: configure Ascon core as V1 or V2 or V3 in order to have 32bit bus
-	ascon_core _wrapped(
+	ascon_core i_ascon_core (
 		.clk		( clk_i		),
 		.rst		( !rst_ni	),
 		// connected to key read dma
@@ -88,7 +88,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// connect to bdo write dma
 		.bdo		( bdo[31:0] 	),
 		.bdo_valid	( bdo_valid 	),
-		.bdo_ready	( link&bdo_ready),
+		.bdo_ready	( (link&bdo_ready) | cmd_dio ),
 		.bdo_type	( bdo_type[3:0] ),
 		.bdo_eot	( bdo_eot 	),
 		// Control input to finish hash?
@@ -117,7 +117,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic [4:0] status_dma;
 	logic [4:0] status_dev;
 	// Auth DMA write (5)
-  	ascon_write_dma _auth_w (
+  	ascon_write_dma i_auth_w (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
 		.testmode_i	( testmode_i ),
@@ -127,10 +127,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// input dma write address, length (bytes)
 		.awvalid	( link_cmd[0] | (sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==5) ), 
 		.awready	( status_cmd[0] ),
-		.awaddr		( link_cmd[0] ? axi_wdata : sbr_req_i.a.wdata ),
+		.awaddr		( link_cmd[0] ? axi_wdata_mux : sbr_req_i.a.wdata ),
 		.awlen		( link_cmd[0] ? cmd_len : length ),  // should be hw as 1 or 4
 		// axi read word stream input
-		.rvalid		(  auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
+		.rvalid		(  auth_valid_axi || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
 		.rready		(  auth_ready ),
 		.rdata		(( auth_valid_axi ) ? ( (auth) ? "Pass" : "Fail" ) : sbr_req_i.a.wdata )
 	);
@@ -141,11 +141,13 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic auth_valid_axi;
 	always_ff @(posedge clk_i ) begin
 		auth_valid_del <= auth_valid;
-		auth_valid_axi <= (auth_valid && !auth_valid_del) ? 1'b1 : ( auth_ready ) ? 1'b0 : auth_valid_axi;
+		auth_valid_axi <= (auth_valid && !auth_valid_del) ? 1'b1 : 
+                                  (!auth_valid && auth_valid_del) ? 1'b0 : 
+                                                   ( auth_ready ) ? 1'b0 : auth_valid_axi;
 	end
 
 	// BDO Write DMA (9)
-  	ascon_write_dma _bdo_w (
+  	ascon_write_dma i_bdo_w (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
 		.testmode_i	( testmode_i ),
@@ -155,7 +157,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// input dma write address, length (bytes)
 		.awvalid	( link_cmd[1] | ( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==9 )), 
 		.awready	( status_cmd[1] ),
-		.awaddr		( link_cmd[1] ? axi_wdata : sbr_req_i.a.wdata ),
+		.awaddr		( link_cmd[1] ? axi_wdata_mux : sbr_req_i.a.wdata ),
 		.awlen		( link_cmd[1] ? cmd_len : length ), 
 		// axi read word stream input
 		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
@@ -169,7 +171,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic axi_wvalid;
 	logic axi_wready;
 	// CMD Read DMA (1)
-  	ascon_read_dma _cmd_r (
+  	ascon_read_dma i_cmd_r (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
 		.testmode_i	( testmode_i ),
@@ -192,15 +194,16 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	assign status_dev[2] = axi_wready;
 
 
-	// latch the stream output to get the read data word
+	// CMD fifo save last 6 commands
 	always_ff @(posedge clk_i) begin
-		dma_read_data[0] <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? axi_wdata : dma_read_data[0];
-		dma_read_data[1] <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? dma_read_data[0] : dma_read_data[1];
-		dma_read_data[2] <= ( !rst_ni ) ? 0 : ( axi_wvalid ) ? dma_read_data[1] : dma_read_data[2];
+		dma_read_data[5:0] <= ( !rst_ni ) ? 0 : 
+                                      ( axi_wvalid && axi_wready || cmd_fifo ) ? { dma_read_data[4:0], axi_wdata } : dma_read_data;
 	end
+	logic [31:0] axi_wdata_mux;
+	assign axi_wdata_mux = ( cmd_fifo ) ? dma_read_data[5] : axi_wdata;
 
 	// Key read DMA (7)
-  	ascon_read_dma _key_r (
+  	ascon_read_dma i_key_r (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
 		.testmode_i	( testmode_i ),
@@ -210,7 +213,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// input dma address, length (bytes)
 		.arvalid	( link_cmd[3] | ( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==7) ), 
 		.arready	( status_cmd[3] ),
-		.araddr		( link_cmd[3] ? axi_wdata : sbr_req_i.a.wdata ),
+		.araddr		( link_cmd[3] ? axi_wdata_mux : sbr_req_i.a.wdata ),
 		.arlen		( 16 ), 
 		// axi Write data word stream output 
 		.wvalid		( key_valid ),
@@ -223,7 +226,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	assign status_dev[3] = key_ready;
 
 	// BDI Read DMA (11)
-  	ascon_read_dma _bdi_r (
+  	ascon_read_dma i_bdi_r (
     		.clk_i		( clk_i ),
     		.rst_ni         ( rst_ni ),
 		.testmode_i	( testmode_i ),
@@ -233,7 +236,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// input dm a address, length (bytes)
 		.arvalid	( link_cmd[4] | (sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==11) ), 
 		.arready	( status_cmd[4] ),
-		.araddr		( link_cmd[4] ? axi_wdata : sbr_req_i.a.wdata ),
+		.araddr		( link_cmd[4] ? axi_wdata_mux : sbr_req_i.a.wdata ),
 		.arlen		( link_cmd[4] ? cmd_len : length ), 
 		// axi Write data word stream output 
 		.wvalid		( bdi_valid ),
@@ -287,6 +290,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		end else begin
 			mode	<= ( state == S_ENC_MODE ||
 				     state == S_DEC_MODE ||
+				     state == S_DEC2_MODE ||
                                      state == S_HASH_MODE ) ? cmd_mode : 4'h0;
 		end;
 	end
@@ -310,7 +314,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	end
 	
 	// formulate the response
-	logic [2:0][31:0] dma_read_data;
+	logic [5:0][31:0] dma_read_data;
 	always_comb begin
 	    	sbr_rsp_o 		= '0;
     		sbr_rsp_o.gnt      	= 1'b1; // non blocking
@@ -368,6 +372,20 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	localparam S_HASH_MSG_WAIT	= 42;
 	localparam S_HASH_HASH 		= 43;
 	localparam S_HASH_HASH_WAIT 	= 44;
+	// dec auth
+	localparam S_DEC2_KEY 		= 52;
+	localparam S_DEC2_KEY_WAIT1 	= 53;
+	localparam S_DEC2_MODE 		= 54;
+	localparam S_DEC2_KEY_WAIT2 	= 55;
+	localparam S_DEC2_NONCE		= 56;
+	localparam S_DEC2_NONCE_WAIT 	= 57;
+	localparam S_DEC2_AD 		= 58;
+	localparam S_DEC2_AD_WAIT 	= 59;
+	localparam S_DEC2_MSG 		= 60;
+	localparam S_DEC2_MSG_WAIT	= 61;
+	localparam S_DEC2_TAG 		= 62;
+	localparam S_DEC2_TAG_WAIT 	= 63;
+	localparam S_DEC2_DONE_WAIT 	= 66;
 
 	logic [7:0] state, state_nx;
 	always_comb begin
@@ -400,13 +418,28 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		S_DEC_AD :       begin state_nx = ( axi_wvalid && axi_wready) ? S_DEC_AD_WAIT    : S_DEC_AD        ; end
 		S_DEC_AD_WAIT :  begin state_nx = ( status_cmd[4]           ) ? S_DEC_MSG        : S_DEC_AD_WAIT   ; end
 		S_DEC_MSG :      begin state_nx = ( axi_wvalid && axi_wready) ? S_DEC_MSG_WAIT   : S_DEC_MSG       ; end
-		S_DEC_MSG_WAIT : begin state_nx = ( status_cmd[4] && 
-                                                    status_cmd[1]           ) ? S_DEC_TAG        : S_DEC_MSG_WAIT  ; end
+		S_DEC_MSG_WAIT : begin state_nx = ( status_cmd[4]           ) ? S_DEC_TAG        : S_DEC_MSG_WAIT  ; end // no write first time
 		S_DEC_TAG :      begin state_nx = ( axi_wvalid && axi_wready) ? S_DEC_TAG_WAIT   : S_DEC_TAG       ; end
 		S_DEC_TAG_WAIT : begin state_nx = ( status_cmd[4]           ) ? S_DEC_AUTH       : S_DEC_TAG_WAIT  ; end
 		S_DEC_AUTH :     begin state_nx = ( axi_wvalid && axi_wready) ? S_DEC_AUTH_WAIT  : S_DEC_AUTH      ; end
 		S_DEC_AUTH_WAIT :begin state_nx = ( status_cmd[0]           ) ? S_DEC_DONE_WAIT  : S_DEC_AUTH_WAIT ; end
-		S_DEC_DONE_WAIT :begin state_nx = ( done                    ) ? S_IDLE           : S_DEC_DONE_WAIT ; end
+		S_DEC_DONE_WAIT :begin state_nx = ( auth_valid && !auth     ) ? S_IDLE           :
+                                                  ( auth_valid &&  auth     ) ? S_DEC2_KEY       : S_DEC_DONE_WAIT ; end
+		// Authenticated Decode
+		S_DEC2_KEY:       begin state_nx =                               S_DEC2_KEY_WAIT1                     ; end
+		S_DEC2_KEY_WAIT1: begin state_nx = ( key_valid               ) ? S_DEC2_MODE       : S_DEC2_KEY_WAIT1 ; end
+		S_DEC2_MODE:      begin state_nx =                               S_DEC2_KEY_WAIT2                     ; end
+		S_DEC2_KEY_WAIT2: begin state_nx = ( status_cmd[3]           ) ? S_DEC2_NONCE      : S_DEC2_KEY_WAIT2 ; end
+		S_DEC2_NONCE :    begin state_nx =                               S_DEC2_NONCE_WAIT                    ; end
+		S_DEC2_NONCE_WAIT:begin state_nx = ( status_cmd[4]           ) ? S_DEC2_AD         : S_DEC2_NONCE_WAIT; end
+		S_DEC2_AD :       begin state_nx =                               S_DEC2_AD_WAIT                       ; end
+		S_DEC2_AD_WAIT :  begin state_nx = ( status_cmd[4]           ) ? S_DEC2_MSG        : S_DEC2_AD_WAIT   ; end
+		S_DEC2_MSG :      begin state_nx =                               S_DEC2_MSG_WAIT                      ; end
+		S_DEC2_MSG_WAIT : begin state_nx = ( status_cmd[4] && 							    // Write pt
+                                                     status_cmd[1]           ) ? S_DEC2_TAG        : S_DEC2_MSG_WAIT  ; end
+		S_DEC2_TAG :      begin state_nx =                               S_DEC2_TAG_WAIT                      ; end
+		S_DEC2_TAG_WAIT : begin state_nx = ( status_cmd[4]           ) ? S_DEC2_DONE_WAIT  : S_DEC2_TAG_WAIT  ; end
+		S_DEC2_DONE_WAIT :begin state_nx = ( done                    ) ? S_IDLE            : S_DEC2_DONE_WAIT ; end
 		// Hash
 		S_HASH_MODE:     begin state_nx =                               S_HASH_MSG                         ; end
 		S_HASH_MSG :     begin state_nx = ( axi_wvalid && axi_wready) ? S_HASH_MSG_WAIT  : S_HASH_MSG      ; end
@@ -448,20 +481,21 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic [4:0] link_cmd;
 	always_comb begin
 		link_cmd = 0;
-		if( axi_wvalid && axi_wready ) begin
+		if( axi_wvalid && axi_wready || cmd_fifo ) begin
 			link_cmd[BDI_DMA] = ( state == S_ENC_NONCE ||
 					      state == S_ENC_AD    ||
 					      state == S_ENC_MSG   ||
-					      state == S_DEC_NONCE ||
-					      state == S_DEC_AD    ||
-					      state == S_DEC_MSG   ||
-					      state == S_DEC_TAG   ||
+					      state == S_DEC_NONCE || state == S_DEC2_NONCE ||
+					      state == S_DEC_AD    || state == S_DEC2_AD    ||
+					      state == S_DEC_MSG   || state == S_DEC2_MSG   ||
+					      state == S_DEC_TAG   || state == S_DEC2_TAG   ||
                                               state == S_HASH_MSG  ) ? 1'b1 : 1'b0;
 			link_cmd[KEY_DMA] = ( state == S_ENC_KEY   ||
-					      state == S_DEC_KEY   ) ? 1'b1 : 1'b0;
+					      state == S_DEC_KEY   || 
+                                              state == S_DEC2_KEY ) ? 1'b1 : 1'b0;
 			link_cmd[BDO_DMA] = ( state == S_ENC_MSG   ||
 					      state == S_ENC_TAG   ||
-					      state == S_DEC_MSG   ||
+					      state == S_DEC2_MSG  ||
 					      state == S_HASH_HASH ) ? 1'b1 : 1'b0;
 			link_cmd[AUTH_DMA]= ( state == S_DEC_AUTH  ) ? 1'b1 : 1'b0;
 		end
@@ -481,36 +515,71 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
 	// Setup other data for cmd
 	// Length, BDI_type, LIO, EOI, EOT
+	logic cmd_dio; // flag that output discarded, set bdo_ready
 	logic [3:0] cmd_type;
 	logic [31:0] cmd_len;
 	logic cmd_lio, cmd_eoi, cmd_eot;
+	logic cmd_fifo;;
 	logic [3:0] cmd_mode;
 	always_comb begin
+		cmd_fifo =( state == S_DEC2_KEY   ||
+                            state == S_DEC2_NONCE ||
+                            state == S_DEC2_AD    ||
+                            state == S_DEC2_MSG   ||
+                            state == S_DEC2_TAG   ) ? 1'b1 : 1'b0;
 		cmd_mode =( state == S_ENC_MODE ) ? 4'h1 : 
 			  ( state == S_DEC_MODE ) ? 4'h2 :
+			  ( state == S_DEC2_MODE) ? 4'h2 :
 			  ( state == S_HASH_MODE) ? 4'h3 : 4'h0;
-		cmd_type =( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT || state == S_DEC_NONCE || state == S_DEC_NONCE_WAIT ) ? 4'h1 :
-			  ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    || state == S_DEC_AD    || state == S_DEC_AD_WAIT    ) ? 4'h2 :
-			  ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ) ? 4'h3 : 
+		cmd_type =( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT || 
+                            state == S_DEC_NONCE || state == S_DEC_NONCE_WAIT ||
+                            state == S_DEC2_NONCE|| state == S_DEC2_NONCE_WAIT) ? 4'h1 :
+			  ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    || 
+                            state == S_DEC_AD    || state == S_DEC_AD_WAIT    ||
+                            state == S_DEC2_AD   || state == S_DEC2_AD_WAIT   ) ? 4'h2 :
+			  ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || 
+                            state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ||
+                            state == S_DEC2_MSG  || state == S_DEC2_MSG_WAIT  ) ? 4'h3 : 
 			  ( state == S_HASH_MSG  || state == S_HASH_MSG_WAIT  ) ? 4'h3 : 
-                          ( state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ) ? 4'h4 : 4'h0;
-		cmd_lio = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ) ? 1'b1 : 1'b0;
+                          ( state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ||
+                            state == S_DEC2_TAG  || state == S_DEC2_TAG_WAIT  ) ? 4'h4 : 4'h0;
+		cmd_lio = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC2_MSG  || state == S_DEC2_MSG_WAIT  ) ? 1'b1 : 1'b0;
+		cmd_dio = ( state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ) ? 1'b1 : 1'b0;
 		cmd_eoi = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ||
                             state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ||
                             state == S_HASH_MSG  || state == S_HASH_MSG_WAIT  ||
                           ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    ) && msg_len == 0 && ad_len != 0 || 
                           ( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT ) && msg_len == 0 && ad_len == 0 ) ? 1'b1 : 1'b0;
-		cmd_eot = ( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT || state == S_DEC_NONCE || state == S_DEC_NONCE_WAIT ||
-                            state == S_ENC_AD    || state == S_ENC_AD_WAIT    || state == S_DEC_AD    || state == S_DEC_AD_WAIT    ||
-			    state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ||
-                            state == S_HASH_MSG  || state == S_HASH_MSG_WAIT  || state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ) ? 1'b1 : 1'b0;
-		cmd_len = ( state == S_ENC_KEY   || state == S_DEC_KEY   ) ? 16 :
-			  ( state == S_ENC_NONCE || state == S_DEC_NONCE ) ? 16 :
-			  ( state == S_ENC_AD    || state == S_DEC_AD    ) ? ad_len :
-			  ( state == S_ENC_MSG   || state == S_DEC_MSG   || state == S_HASH_MSG ) ? msg_len :
-			  ( state == S_ENC_TAG   || state == S_DEC_TAG   ) ? 16 : 
-                                                  ( state == S_DEC_AUTH  ) ? 4  :
-                                                  ( state == S_HASH_MSG  ) ? 32 : 0 ;
+		cmd_eot = ( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT || 
+                            state == S_DEC_NONCE || state == S_DEC_NONCE_WAIT ||
+                            state == S_DEC2_NONCE|| state == S_DEC2_NONCE_WAIT||
+                            state == S_ENC_AD    || state == S_ENC_AD_WAIT    || 
+                            state == S_DEC_AD    || state == S_DEC_AD_WAIT    ||
+                            state == S_DEC2_AD   || state == S_DEC2_AD_WAIT   ||
+			    state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || 
+                            state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ||
+                            state == S_DEC2_MSG  || state == S_DEC2_MSG_WAIT  ||
+                            state == S_HASH_MSG  || state == S_HASH_MSG_WAIT  || 
+                            state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ||
+                            state == S_DEC2_TAG  || state == S_DEC2_TAG_WAIT  ) ? 1'b1 : 1'b0;
+		cmd_len = ( state == S_ENC_KEY   || 
+                            state == S_DEC_KEY   ||
+                            state == S_DEC2_KEY  ) ? 16 :
+			  ( state == S_ENC_NONCE || 
+                            state == S_DEC_NONCE ||
+                            state == S_DEC2_NONCE) ? 16 :
+			  ( state == S_ENC_AD    || 
+                            state == S_DEC_AD    ||
+                            state == S_DEC2_AD   ) ? ad_len :
+			  ( state == S_ENC_MSG   || 
+                            state == S_DEC_MSG   || 
+                            state == S_DEC2_MSG  || 
+                            state == S_HASH_MSG  ) ? msg_len :
+			  ( state == S_ENC_TAG   || 
+                            state == S_DEC_TAG   ||
+                            state == S_DEC2_TAG  ) ? 16 : 
+                          ( state == S_DEC_AUTH  ) ? 4  :
+                          ( state == S_HASH_MSG  ) ? 32 : 0 ;
 	end
 		
 
