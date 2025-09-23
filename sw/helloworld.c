@@ -44,6 +44,10 @@ char ad[9] = { 0x2B, 0x0A, 0x5B, 0x7A, 0x81, 0xDE, 0x31, 0x73, 0xE2 };
 char pt[9] = { 0x32, 0x3B, 0x41, 0xEE, 0x00, 0xAE, 0x8A, 0x14, 0xAA };
 char ct[9] = { 0x3C, 0x71, 0xC7, 0xBA, 0xDE, 0x48, 0x01, 0x2E, 0x1D };
 char otag[16] = { 0xB2, 0x6E, 0x66, 0xA8, 0xA5, 0x5D, 0x6A, 0x93, 0x28, 0xD8, 0xD0, 0x5B, 0xC1, 0x67, 0x8A, 0x3E };
+char otagr[16] = {  0xA8,0x66,0x6E,0xB2,  // reverse endianess of tag?
+                    0x93,0x6A,0x5D,0xA5,   
+		    0x5B,0xD0,0xD8,0x28,   
+		    0x3E,0x8A,0x67,0xC1 };
 char tag[16];
 char auth[4];
 char hash[32];
@@ -85,24 +89,31 @@ int main() {
     cmd[16] = (long)ad;
     cmd[17] = (long)pt;
     cmd[18] = (long)tag;
-	// Hash
-    cmd[19] = (3/*HASH*/<<28) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
-    cmd[20] = (long)key; // use first 9 bytes of it as msg
-    cmd[21] = (long)hash;
+	// Decode it again
+    cmd[19] = (2/*DEC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[20] = (long)key;
+    cmd[21] = (long)npub;
+    cmd[22] = (long)ad;
+    cmd[23] = (long)pt;
+    cmd[24] = (long)tag;
+    cmd[25] = (long)auth;
+
+    //cmd[19] = (3/*HASH*/<<28) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    //cmd[20] = (long)key; // use first 9 bytes of it as msg
+    //cmd[21] = (long)hash;
 
     printf("Go\n");
-    hw_reg[4] = 22<<2; // command length
+    hw_reg[4] = 13<<2; // command length
     hw_reg[1] = (long)cmd; // Start command list
-	printf("sts %x\n", hw_reg[6] );
-	printf("sts %x\n", hw_reg[6] );
-	printf("sts %x\n", hw_reg[6] );
-    //while( (hw_reg[6] & (1<<8)) == 0 ); // wait for cmds to be issued
-    ////while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
+    while( (hw_reg[6] & 0x11111) != 0x11111 ); // wait for all dma's to finish 
+    //while( (hw_reg[6] & (1<<25)) != 0 ); // wait for cipher dome
     printf("Done\n");
+    printf("Auth %x [", *(long *)auth );
+    for( int ii = 0; ii < 4; ii++ ) 
+	putchar( auth[3-ii] );
+    printf("]\n");
     uart_write_flush();
     return(1); ///////////////////////
-    for( int ii = 0; ii < 4; ii++ ) 
-	putchar( auth[ii] );
     printf(" Auth %x\n", *(long *)auth );
     	int err;
 	err = 0;

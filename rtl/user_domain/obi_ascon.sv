@@ -65,7 +65,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	// authentication output
 	logic 		auth; 			
 	logic 		auth_ready; // ignored
-	logic 		auth_valid;	// sample auth pulse
+	logic 		auth_valid; // sample auth pulse
 
 	// ASCON core from github.com/rprimas/ascon-verilog
 	// Note: configure Ascon core as V1 or V2 or V3 in order to have 32bit bus
@@ -107,6 +107,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	assign link = ( lio ) ? (bdi_valid & bdi_ready & bdo_valid & bdo_ready) : 1'b1;
 	assign bdo_eoo   = ascon_ctrl[12]; // not sure
 	assign lio       = ascon_ctrl[8] | cmd_lio; // link bdi/bdo transfers
+	
 
   //////////////////////////
   // OBI DMA Managers (5)
@@ -131,10 +132,17 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi read word stream input
 		.rvalid		(  auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
 		.rready		(  auth_ready ),
-		.rdata		(( auth_valid ) ? ( (auth) ? "Pass" : "Fail" ) : sbr_req_i.a.wdata )
+		.rdata		(( auth_valid_axi ) ? ( (auth) ? "Pass" : "Fail" ) : sbr_req_i.a.wdata )
 	);
 	assign status_dma[0] = auth_ready;
-	assign status_dev[0] = auth_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6;
+	assign status_dev[0] = auth_valid_axi || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6;
+	// Auth valid handshakeA
+	logic auth_valid_del; 
+	logic auth_valid_axi;
+	always_ff @(posedge clk_i ) begin
+		auth_valid_del <= auth_valid;
+		auth_valid_axi <= (auth_valid && !auth_valid_del) ? 1'b1 : ( auth_ready ) ? 1'b0 : auth_valid_axi;
+	end
 
 	// BDO Write DMA (9)
   	ascon_write_dma _bdo_w (
@@ -152,7 +160,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi read word stream input
 		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
-		.rdata		( bdo )
+		.rdata		( ( bdo_type == 4 ) ? { bdo[7:0], bdo[15:8], bdo[23:16], bdo[31:24] } : bdo ) // ascon fix hack endian swap
 	);
 	assign status_dma[1] = bdo_ready;
 	assign status_dev[1] = bdo_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10;
@@ -501,7 +509,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 			  ( state == S_ENC_AD    || state == S_DEC_AD    ) ? ad_len :
 			  ( state == S_ENC_MSG   || state == S_DEC_MSG   || state == S_HASH_MSG ) ? msg_len :
 			  ( state == S_ENC_TAG   || state == S_DEC_TAG   ) ? 16 : 
-                                                  ( state == S_DEC_AUTH  ) ? 16 :
+                                                  ( state == S_DEC_AUTH  ) ? 4  :
                                                   ( state == S_HASH_MSG  ) ? 32 : 0 ;
 	end
 		
