@@ -53,6 +53,10 @@ char ohash[32] = { 0xFB, 0xE3, 0x34, 0x4F, 0xE7, 0x91, 0xB5, 0x29, 0x89, 0xFD, 0
                    0x72, 0x51, 0x6F, 0x55, 0x12, 0x2A, 0xBF, 0x75, 0xFC, 0x38, 0xAB, 0xF0, 0xA1, 0xBA, 0xB0, 0x75 };
 char oxof[16] = { 0xD6, 0x25, 0x86, 0x5F, 0x2F, 0x05, 0x4C, 0x7C, 0x32, 0xB7, 0x30, 0x42, 0xF5, 0x2B, 0xB8, 0x92 };
 char xof[16];
+char ctsm[17] = { 0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90, 0xE4, 0x15, 0xD6, 0x42, 0xBF, 0xCD, 0x59, 0xF1 };
+char msg2[9] = { 0xFC, 0xCA, 0x19, 0x6B, 0x3B, 0xB3, 0x09, 0x8C, 0xEE };
+char ocxof[16] = { 0xC5, 0x6B, 0xE7, 0x6B, 0x23, 0xFF, 0x3B, 0x66, 0xE4, 0xE3, 0x79, 0x39, 0xF5, 0x0D, 0xFE, 0x0F };
+char cxof[16];
 
 int main() {
     uart_init(); // setup the uart peripheral
@@ -67,6 +71,7 @@ int main() {
     int  ad_len = 9;
     int  msg_len = 9;
     int  hash_len = 16;
+    int  ctsm_len = ad_len + 8;
 
     //////////////////////////////////////
     // Build Cipher Command List
@@ -93,6 +98,11 @@ int main() {
     cmd[cidx++] = hash_len;
     cmd[cidx++] = (long)key; // read this as msg
     cmd[cidx++] = (long)xof; // w
+    cmd[cidx++] = (5/*CXOF*/<<28) + (ctsm_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[cidx++] = hash_len;
+    cmd[cidx++] = (long)ctsm; // read this as msg
+    cmd[cidx++] = (long)msg2; // read this as msg
+    cmd[cidx++] = (long)cxof; // w
 
     printf("Go\n");
 
@@ -115,34 +125,25 @@ int main() {
 	err = 0;
 	// AUth should be "pass"
         for( int ii = 0; ii < 4; ii++ ) 
-		if( auth[ii] != ((ii == 0)?'p':(ii==1)?'a':'s')) {
-			err++;
-		}
+		if( auth[ii] != ((ii == 0)?'p':(ii==1)?'a':'s')) { err++; }
 	// pt should = oct
 	for( int ii = 0; ii < msg_len; ii++ )
-		if( pt[ii] != oct[ii] ) {
-			err++;
-		}
+		if( pt[ii] != oct[ii] ) { err++; }
 	// ct should = opt
 	for( int ii = 0; ii < msg_len; ii++ )
-		if( ct[ii] != opt[ii] ) {
-			err++;
-		}
+		if( ct[ii] != opt[ii] ) { err++; }
 	// tag = otag
 	for( int ii = 0; ii < 16; ii++ )
-		if( tag[ii] != otag[ii] ) {
-			err++;
-		}
+		if( tag[ii] != otag[ii] ) { err++; }
 	// hash = ohash
 	for( int ii = 0; ii < 32; ii++ )
-		if( hash[ii] != ohash[ii] ) {
-			err++;
-		}
+		if( hash[ii] != ohash[ii] ) { err++; }
 	// xof = oxof 
 	for( int ii = 0; ii < hash_len; ii++ )
-		if( xof[ii] != oxof[ii] ) {
-			err++;
-		}
+		if( xof[ii] != oxof[ii] ) { err++; }
+	// cxof = ocxof 
+	for( int ii = 0; ii < hash_len; ii++ )
+		if( cxof[ii] != ocxof[ii] ) { err++; }
 	printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
 
     uart_write_flush();
