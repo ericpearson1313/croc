@@ -81,8 +81,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.bdi_valid	( {4{link&bdi_valid}}&bdi_be[3:0] ),
 		.bdi_ready	( bdi_ready 	),
 		.bdi_type	( {4{link&bdi_valid}}&bdi_type[3:0]), 
-		.bdi_eot	( bdi_last & bdi_eot ),
-		.bdi_eoi	( bdi_last & bdi_eoi ),
+		.bdi_eot	( link & bdi_valid & bdi_last & bdi_eot ),
+		.bdi_eoi	( link & bdi_valid & bdi_last & bdi_eoi ),
 		// mode control input
 		.mode		( mode[3:0]	),
 		// connect to bdo write dma
@@ -162,7 +162,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi read word stream input
 		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
-		.rdata		( ( bdo_type == 4 ) ? { bdo[7:0], bdo[15:8], bdo[23:16], bdo[31:24] } : bdo ) // ascon fix hack endian swap
+		.rdata		( ( bdo_type == 4 ||
+                                    bdo_type == 5 ) ? { bdo[7:0], bdo[15:8], bdo[23:16], bdo[31:24] } : bdo ) // ascon fix hack endian swap
 	);
 	assign status_dma[1] = bdo_ready;
 	assign status_dev[1] = bdo_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10;
@@ -445,7 +446,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		S_HASH_MSG :     begin state_nx = ( axi_wvalid && axi_wready) ? S_HASH_MSG_WAIT  : S_HASH_MSG      ; end
 		S_HASH_MSG_WAIT :begin state_nx = ( status_cmd[4]           ) ? S_HASH_HASH      : S_HASH_MSG_WAIT ; end
 		S_HASH_HASH :    begin state_nx = ( axi_wvalid && axi_wready) ? S_HASH_HASH_WAIT : S_HASH_HASH     ; end
-		S_HASH_HASH_WAIT:begin state_nx = ( status_cmd[0]           ) ? S_IDLE           : S_HASH_HASH_WAIT; end
+		S_HASH_HASH_WAIT:begin state_nx = ( status_cmd[1]           ) ? S_IDLE           : S_HASH_HASH_WAIT; end
 		endcase
 	end
 
@@ -579,7 +580,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
                             state == S_DEC_TAG   ||
                             state == S_DEC2_TAG  ) ? 16 : 
                           ( state == S_DEC_AUTH  ) ? 4  :
-                          ( state == S_HASH_MSG  ) ? 32 : 0 ;
+                          ( state == S_HASH_HASH  ) ? 32 : 0 ;
 	end
 		
 
