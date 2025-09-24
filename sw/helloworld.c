@@ -51,6 +51,8 @@ char auth[4];
 char hash[32];
 char ohash[32] = { 0xFB, 0xE3, 0x34, 0x4F, 0xE7, 0x91, 0xB5, 0x29, 0x89, 0xFD, 0x4C, 0x22, 0x05, 0x94, 0xDA, 0xAA, 
                    0x72, 0x51, 0x6F, 0x55, 0x12, 0x2A, 0xBF, 0x75, 0xFC, 0x38, 0xAB, 0xF0, 0xA1, 0xBA, 0xB0, 0x75 };
+char oxof[16] = { 0xD6, 0x25, 0x86, 0x5F, 0x2F, 0x05, 0x4C, 0x7C, 0x32, 0xB7, 0x30, 0x42, 0xF5, 0x2B, 0xB8, 0x92 };
+char xof[16];
 
 int main() {
     uart_init(); // setup the uart peripheral
@@ -62,35 +64,43 @@ int main() {
 
     // Create ASCON Instructions
     printf("ASCON test\n");
-    long cmd[30];
     int  ad_len = 9;
     int  msg_len = 9;
-	// Encode it
-    cmd[0] = (1/*ENC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
-    cmd[1] = (long)key;
-    cmd[2] = (long)npub;
-    cmd[3] = (long)ad;
-    cmd[4] = (long)pt; // rw
-    cmd[5] = (long)tag; // w
-	// Decode and Auth
-    cmd[6] = (2/*DEC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
-    cmd[7] = (long)key;
-    cmd[8] = (long)npub;
-    cmd[9] = (long)ad;
-    cmd[10]= (long)ct; // rw
-    cmd[11]= (long)tag; 
-    cmd[12]= (long)auth; // w
-    cmd[13] = (3/*HASH*/<<28) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
-    cmd[14] = (long)key; // read this as msg
-    cmd[15] = (long)hash; // w
+    int  hash_len = 16;
+
+    //////////////////////////////////////
+    // Build Cipher Command List
+    //////////////////////////////////////
+    long cmd[30];
+    int  cidx = 0;
+    cmd[cidx++] = (1/*ENC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[cidx++] = (long)key;
+    cmd[cidx++] = (long)npub;
+    cmd[cidx++] = (long)ad;
+    cmd[cidx++] = (long)pt; // rw
+    cmd[cidx++] = (long)tag; // w
+    cmd[cidx++] = (2/*DEC*/<<28) + (ad_len<<12) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[cidx++] = (long)key;
+    cmd[cidx++] = (long)npub;
+    cmd[cidx++] = (long)ad;
+    cmd[cidx++] = (long)ct; // rw
+    cmd[cidx++] = (long)tag; 
+    cmd[cidx++] = (long)auth; // w
+    cmd[cidx++] = (3/*HASH*/<<28) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[cidx++] = (long)key; // read this as msg
+    cmd[cidx++] = (long)hash; // w
+    cmd[cidx++] = (4/*XOF*/<<28) + (msg_len<<0); // { cmd[7:0], ad_len[11:0], msg_len[11:0] }
+    cmd[cidx++] = hash_len;
+    cmd[cidx++] = (long)key; // read this as msg
+    cmd[cidx++] = (long)xof; // w
 
     printf("Go\n");
 
     //////////////////////////////////////
-    // Execute Cipher Engine command list
+    // Execute Cipher Engine Command List
     //////////////////////////////////////
     //
-    hw_reg[4] = 16<<2; // command list length
+    hw_reg[4] = cidx<<2; // command list length
     hw_reg[1] = (long)cmd; // Start execution on command list
     while( (hw_reg[6] & 0x2011111) != 0x2011111 ); // wait for completion (dmas complete and cipher done)
     //
@@ -109,12 +119,12 @@ int main() {
 			err++;
 		}
 	// pt should = oct
-	for( int ii = 0; ii < 9; ii++ )
+	for( int ii = 0; ii < msg_len; ii++ )
 		if( pt[ii] != oct[ii] ) {
 			err++;
 		}
 	// ct should = opt
-	for( int ii = 0; ii < 9; ii++ )
+	for( int ii = 0; ii < msg_len; ii++ )
 		if( ct[ii] != opt[ii] ) {
 			err++;
 		}
@@ -126,6 +136,11 @@ int main() {
 	// hash = ohash
 	for( int ii = 0; ii < 32; ii++ )
 		if( hash[ii] != ohash[ii] ) {
+			err++;
+		}
+	// xof = oxof 
+	for( int ii = 0; ii < hash_len; ii++ )
+		if( xof[ii] != oxof[ii] ) {
 			err++;
 		}
 	printf( (err ) ? "\e[31mERROR\e[0m\n" : "\e[42mPASSED\e[0m\n");
