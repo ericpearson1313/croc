@@ -88,7 +88,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// connect to bdo write dma
 		.bdo		( bdo[31:0] 	),
 		.bdo_valid	( bdo_valid 	),
-		.bdo_ready	( (link&bdo_ready) | cmd_dio | cmd_eoo ),
+		.bdo_ready	( (link&bdo_ready) | cmd_dio | cmd_eoo1 | cmd_eoo2 ),
 		.bdo_type	( bdo_type[3:0] ),
 		.bdo_eot	( bdo_eot 	),
 		// Control input to finish hash?
@@ -105,7 +105,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	// some hardwired connectoins
 	logic lio, link;
 	assign link = ( lio ) ? (bdi_valid & bdi_ready & bdo_valid & bdo_ready) : 1'b1;
-	assign bdo_eoo   = cmd_eoo | ascon_ctrl[12]; // not sure
+	assign bdo_eoo   = cmd_eoo2 | ascon_ctrl[12]; // not sure
 	assign lio       = ascon_ctrl[8] | cmd_lio; // link bdi/bdo transfers
 	
 
@@ -396,7 +396,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	localparam S_XOF_MSG_WAIT 	= 73;
 	localparam S_XOF_HASH 		= 74;
 	localparam S_XOF_HASH_WAIT	= 75;
-	localparam S_XOF_END   		= 76;
+	localparam S_XOF_END1  		= 76;
+	localparam S_XOF_END2  		= 77;
 	// CXof Hash
 	localparam S_CXOF_MODE		= 80;
 	localparam S_CXOF_LEN		= 81;
@@ -406,7 +407,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	localparam S_CXOF_MSG_WAIT	= 85;
 	localparam S_CXOF_HASH		= 86;
 	localparam S_CXOF_HASH_WAIT	= 87;
-	localparam S_CXOF_END   	= 88;
+	localparam S_CXOF_END1  	= 88;
+	localparam S_CXOF_END2  	= 89;
 
 	logic [7:0] state, state_nx;
 	always_comb begin
@@ -476,8 +478,9 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		S_XOF_MSG_WAIT : begin state_nx = ( status_cmd[4]           ) ? S_XOF_HASH      : S_XOF_MSG_WAIT  ; end
 		S_XOF_HASH :     begin state_nx = ( axi_wvalid && axi_wready) ? S_XOF_HASH_WAIT : S_XOF_HASH      ; end
 		S_XOF_HASH_WAIT: begin state_nx = ( status_cmd[1] &&
-                                                    status_dev[1]           ) ? S_XOF_END       : S_XOF_HASH_WAIT ; end
-		S_XOF_END   :    begin state_nx =                               S_IDLE                            ; end
+                                                    status_dev[1]           ) ? S_XOF_END1      : S_XOF_HASH_WAIT ; end
+		S_XOF_END1   :   begin state_nx =                               S_XOF_END2                        ; end
+		S_XOF_END2   :   begin state_nx =                               S_IDLE                            ; end
 		// Xof Hash
 		S_CXOF_MODE:      begin state_nx =                               S_CXOF_LEN                          ; end
 		S_CXOF_LEN:       begin state_nx = ( axi_wvalid && axi_wready) ? S_CXOF_AD        : S_CXOF_LEN       ; end
@@ -487,8 +490,9 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		S_CXOF_MSG_WAIT : begin state_nx = ( status_cmd[4]           ) ? S_CXOF_HASH      : S_CXOF_MSG_WAIT  ; end
 		S_CXOF_HASH :     begin state_nx = ( axi_wvalid && axi_wready) ? S_CXOF_HASH_WAIT : S_CXOF_HASH      ; end
 		S_CXOF_HASH_WAIT: begin state_nx = ( status_cmd[1] &&
-                                                     status_dev[1]           ) ? S_CXOF_END       : S_CXOF_HASH_WAIT ; end
-		S_CXOF_END   :    begin state_nx =                               S_IDLE                              ; end
+                                                     status_dev[1]           ) ? S_CXOF_END1      : S_CXOF_HASH_WAIT ; end
+		S_CXOF_END1  :    begin state_nx =                               S_CXOF_END2                         ; end
+		S_CXOF_END2  :    begin state_nx =                               S_IDLE                              ; end
 		endcase
 	end
 
@@ -577,7 +581,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic cmd_dio; // flag that output discarded, set bdo_ready
 	logic [3:0] cmd_type;
 	logic [31:0] cmd_len;
-	logic cmd_lio, cmd_eoi, cmd_eot, cmd_eoo;
+	logic cmd_lio, cmd_eoi, cmd_eot; 
+	logic cmd_eoo1, cmd_eoo2; // need 2 cycles as hashes are mult of 64
 	logic cmd_fifo;;
 	logic [3:0] cmd_mode;
 	always_comb begin
@@ -654,8 +659,10 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
                           ( state == S_HASH_HASH ) ? 32 :
                           ( state == S_XOF_HASH  ||
                             state == S_CXOF_HASH ) ? hash_len : 0 ;
-		cmd_eoo = ( state == S_XOF_END   ||
-                            state == S_CXOF_END  ) ? 1'b1 : 1'b0;
+		cmd_eoo1= ( state == S_XOF_END1  ||
+                            state == S_CXOF_END1 ) ? 1'b1 : 1'b0;
+		cmd_eoo2= ( state == S_XOF_END2  ||
+                            state == S_CXOF_END2 ) ? 1'b1 : 1'b0;
 	end
 		
 
