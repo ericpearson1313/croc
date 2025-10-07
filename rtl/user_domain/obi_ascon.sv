@@ -12,7 +12,7 @@
 //
 //////////////////////////////////////////////////
 //////////////////////////////////////////////////
-
+`include "config.sv"
 
 module obi_ascon import user_pkg::*; import croc_pkg::*; #(
   parameter int unsigned magic = 32'h69434017
@@ -27,6 +27,79 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
   output mgr_obi_req_t [4:0] mgr_req_o, // User Mgr (req_o), Croc Sbr (rsp_i)
   input  mgr_obi_rsp_t [4:0] mgr_rsp_i
   );
+
+  // State machine
+	localparam S_IDLE 		= 0;
+	// enc
+	localparam S_ENC_KEY 		= 2;
+	localparam S_ENC_KEY_WAIT1 	= 3;
+	localparam S_ENC_MODE 		= 4;
+	localparam S_ENC_KEY_WAIT2 	= 5;
+	localparam S_ENC_NONCE		= 6;
+	localparam S_ENC_NONCE_WAIT 	= 7;
+	localparam S_ENC_AD 		= 8;
+	localparam S_ENC_AD_WAIT 	= 9;
+	localparam S_ENC_MSG 		= 10;
+	localparam S_ENC_MSG_WAIT	= 11;
+	localparam S_ENC_TAG 		= 12;
+	localparam S_ENC_TAG_WAIT 	= 13;
+	localparam S_ENC_DONE_WAIT 	= 14;
+	// dec
+	localparam S_DEC_KEY 		= 22;
+	localparam S_DEC_KEY_WAIT1 	= 23;
+	localparam S_DEC_MODE 		= 24;
+	localparam S_DEC_KEY_WAIT2 	= 25;
+	localparam S_DEC_NONCE		= 26;
+	localparam S_DEC_NONCE_WAIT 	= 27;
+	localparam S_DEC_AD 		= 28;
+	localparam S_DEC_AD_WAIT 	= 29;
+	localparam S_DEC_MSG 		= 30;
+	localparam S_DEC_MSG_WAIT	= 31;
+	localparam S_DEC_TAG 		= 32;
+	localparam S_DEC_TAG_WAIT 	= 33;
+	localparam S_DEC_AUTH 		= 34;
+	localparam S_DEC_AUTH_WAIT 	= 35;
+	localparam S_DEC_DONE_WAIT 	= 36;
+	// Hash
+	localparam S_HASH_MODE 		= 40;
+	localparam S_HASH_MSG 		= 41;
+	localparam S_HASH_MSG_WAIT	= 42;
+	localparam S_HASH_HASH 		= 43;
+	localparam S_HASH_HASH_WAIT 	= 44;
+	// dec auth
+	localparam S_DEC2_KEY 		= 52;
+	localparam S_DEC2_KEY_WAIT1 	= 53;
+	localparam S_DEC2_MODE 		= 54;
+	localparam S_DEC2_KEY_WAIT2 	= 55;
+	localparam S_DEC2_NONCE		= 56;
+	localparam S_DEC2_NONCE_WAIT 	= 57;
+	localparam S_DEC2_AD 		= 58;
+	localparam S_DEC2_AD_WAIT 	= 59;
+	localparam S_DEC2_MSG 		= 60;
+	localparam S_DEC2_MSG_WAIT	= 61;
+	localparam S_DEC2_TAG 		= 62;
+	localparam S_DEC2_TAG_WAIT 	= 63;
+	localparam S_DEC2_DONE_WAIT 	= 66;
+	// Xof hash
+	localparam S_XOF_MODE		= 70;
+	localparam S_XOF_LEN		= 71;
+	localparam S_XOF_MSG 		= 72;
+	localparam S_XOF_MSG_WAIT 	= 73;
+	localparam S_XOF_HASH 		= 74;
+	localparam S_XOF_HASH_WAIT	= 75;
+	localparam S_XOF_END1  		= 76;
+	localparam S_XOF_END2  		= 77;
+	// CXof Hash
+	localparam S_CXOF_MODE		= 80;
+	localparam S_CXOF_LEN		= 81;
+	localparam S_CXOF_AD		= 82;
+	localparam S_CXOF_AD_WAIT	= 83;
+	localparam S_CXOF_MSG		= 84;
+	localparam S_CXOF_MSG_WAIT	= 85;
+	localparam S_CXOF_HASH		= 86;
+	localparam S_CXOF_HASH_WAIT	= 87;
+	localparam S_CXOF_END1  	= 88;
+	localparam S_CXOF_END2  	= 89;
 
   //////////////////////////
   // ASCON Cipher core
@@ -80,11 +153,11 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.bdi		( bdi[31:0] 	),
 		.bdi_valid	( {4{link&bdi_valid}}&bdi_be[3:0] ),
 		.bdi_ready	( bdi_ready 	),
-		.bdi_type	( {4{link&bdi_valid}}&bdi_type[3:0]), 
+		.bdi_type	( data_type_e'({4{link&bdi_valid}}&bdi_type[3:0]) ), 
 		.bdi_eot	( link & bdi_valid & bdi_last & bdi_eot ),
 		.bdi_eoi	( link & bdi_valid & bdi_last & bdi_eoi ),
 		// mode control input
-		.mode		( mode[3:0]	),
+		.mode		( mode_e'(mode[3:0]) ),
 		// connect to bdo write dma
 		.bdo		( bdo[31:0] 	),
 		.bdo_valid	( bdo_valid 	),
@@ -338,77 +411,6 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	// Fed CMD stream from read DMA engine
 
 
-	localparam S_IDLE 		= 0;
-	// enc
-	localparam S_ENC_KEY 		= 2;
-	localparam S_ENC_KEY_WAIT1 	= 3;
-	localparam S_ENC_MODE 		= 4;
-	localparam S_ENC_KEY_WAIT2 	= 5;
-	localparam S_ENC_NONCE		= 6;
-	localparam S_ENC_NONCE_WAIT 	= 7;
-	localparam S_ENC_AD 		= 8;
-	localparam S_ENC_AD_WAIT 	= 9;
-	localparam S_ENC_MSG 		= 10;
-	localparam S_ENC_MSG_WAIT	= 11;
-	localparam S_ENC_TAG 		= 12;
-	localparam S_ENC_TAG_WAIT 	= 13;
-	localparam S_ENC_DONE_WAIT 	= 14;
-	// dec
-	localparam S_DEC_KEY 		= 22;
-	localparam S_DEC_KEY_WAIT1 	= 23;
-	localparam S_DEC_MODE 		= 24;
-	localparam S_DEC_KEY_WAIT2 	= 25;
-	localparam S_DEC_NONCE		= 26;
-	localparam S_DEC_NONCE_WAIT 	= 27;
-	localparam S_DEC_AD 		= 28;
-	localparam S_DEC_AD_WAIT 	= 29;
-	localparam S_DEC_MSG 		= 30;
-	localparam S_DEC_MSG_WAIT	= 31;
-	localparam S_DEC_TAG 		= 32;
-	localparam S_DEC_TAG_WAIT 	= 33;
-	localparam S_DEC_AUTH 		= 34;
-	localparam S_DEC_AUTH_WAIT 	= 35;
-	localparam S_DEC_DONE_WAIT 	= 36;
-	// Hash
-	localparam S_HASH_MODE 		= 40;
-	localparam S_HASH_MSG 		= 41;
-	localparam S_HASH_MSG_WAIT	= 42;
-	localparam S_HASH_HASH 		= 43;
-	localparam S_HASH_HASH_WAIT 	= 44;
-	// dec auth
-	localparam S_DEC2_KEY 		= 52;
-	localparam S_DEC2_KEY_WAIT1 	= 53;
-	localparam S_DEC2_MODE 		= 54;
-	localparam S_DEC2_KEY_WAIT2 	= 55;
-	localparam S_DEC2_NONCE		= 56;
-	localparam S_DEC2_NONCE_WAIT 	= 57;
-	localparam S_DEC2_AD 		= 58;
-	localparam S_DEC2_AD_WAIT 	= 59;
-	localparam S_DEC2_MSG 		= 60;
-	localparam S_DEC2_MSG_WAIT	= 61;
-	localparam S_DEC2_TAG 		= 62;
-	localparam S_DEC2_TAG_WAIT 	= 63;
-	localparam S_DEC2_DONE_WAIT 	= 66;
-	// Xof hash
-	localparam S_XOF_MODE		= 70;
-	localparam S_XOF_LEN		= 71;
-	localparam S_XOF_MSG 		= 72;
-	localparam S_XOF_MSG_WAIT 	= 73;
-	localparam S_XOF_HASH 		= 74;
-	localparam S_XOF_HASH_WAIT	= 75;
-	localparam S_XOF_END1  		= 76;
-	localparam S_XOF_END2  		= 77;
-	// CXof Hash
-	localparam S_CXOF_MODE		= 80;
-	localparam S_CXOF_LEN		= 81;
-	localparam S_CXOF_AD		= 82;
-	localparam S_CXOF_AD_WAIT	= 83;
-	localparam S_CXOF_MSG		= 84;
-	localparam S_CXOF_MSG_WAIT	= 85;
-	localparam S_CXOF_HASH		= 86;
-	localparam S_CXOF_HASH_WAIT	= 87;
-	localparam S_CXOF_END1  	= 88;
-	localparam S_CXOF_END2  	= 89;
 
 	logic [7:0] state, state_nx;
 	always_comb begin

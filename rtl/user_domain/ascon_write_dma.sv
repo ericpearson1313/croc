@@ -176,12 +176,14 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 			   (  valid_2 && mgr_req_o.req && mgr_rsp_i.gnt );
 	
 	// OBI write (addr, data, be)
-	assign mgr_req_o.req = addr_busy & !full & ( valid_1 | valid_2 ); // throttle and await data
-	assign mgr_req_o.a.addr = { write_addr[31:2], 2'b00 }; // word addresses only
-	assign mgr_req_o.a.wdata = write_data;
-	assign mgr_req_o.a.we = 1'b1;
-	assign mgr_req_o.a.be = be[3:0];
-	assign mgr_req_o.a.aid = 0;
+	always_comb begin
+		mgr_req_o = 0; // default drive all signals
+		mgr_req_o.req = addr_busy & !full & ( valid_1 | valid_2 ); // throttle and await data
+		mgr_req_o.a.addr = { write_addr[31:2], 2'b00 }; // word addresses only
+		mgr_req_o.a.wdata = write_data;
+		mgr_req_o.a.we = 1'b1;
+		mgr_req_o.a.be = be[3:0];
+	end
 	
 
 	// track writes in progress for stalling (>=2) and completion (=0)

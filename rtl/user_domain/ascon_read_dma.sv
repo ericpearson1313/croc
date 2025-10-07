@@ -88,12 +88,12 @@ module ascon_read_dma import user_pkg::*; import croc_pkg::*;
 	assign double_last_flag = ( read_addr_lsb != 0 && in_byte_cnt[3:2] == out_byte_cnt[3:2] ) ? 1'b1 : 1'b0;
 
 	// OBI req outputs
-	assign mgr_req_o.req = addr_busy & !full; // Throttling
-	assign mgr_req_o.a.addr = { read_addr[31:2], 2'b00 }; // word addresses only
-	assign mgr_req_o.a.wdata = 0;
-	assign mgr_req_o.a.we = 0;
-	assign mgr_req_o.a.be = 0;
-	assign mgr_req_o.a.aid = 0;
+	always_comb begin
+		mgr_req_o = 0; // drive default 0 
+		mgr_req_o.req = addr_busy & !full; // Throttling
+		mgr_req_o.a.addr = { read_addr[31:2], 2'b00 }; // word addresses only
+		mgr_req_o.a.we = 0; // read always
+	end
 
  	// Outstanding Requests
 	// datapath cannot block read data 
