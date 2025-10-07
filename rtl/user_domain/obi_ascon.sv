@@ -495,6 +495,8 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
                                                      status_dev[1]           ) ? S_CXOF_END1      : S_CXOF_HASH_WAIT ; end
 		S_CXOF_END1  :    begin state_nx =                               S_CXOF_END2                         ; end
 		S_CXOF_END2  :    begin state_nx =                               S_IDLE                              ; end
+		// default
+		default : state_nx = 'x;
 		endcase
 	end
 
