@@ -118,7 +118,7 @@ module ascon_write_dma import user_pkg::*; import croc_pkg::*;
 	
 	// Receive input aligned read words
 
-	assign rready =  addr_busy && ( !valid_0 || !valid_1 ||  mgr_req_o.req && mgr_rsp_i.gnt ); // take read data if inreg will be available
+	assign rready =  addr_busy && ( !valid_0 || !valid_1 ); // take read data if inreg will be available
 	logic [6:0][7:0] in_reg;
 	always_ff @(posedge clk_i) begin
 		if( rready & rvalid ) begin // receive data
