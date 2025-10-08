@@ -11,6 +11,5 @@ export_include_dirs:
 
 sources:
   - ascon_core.sv
-  - asconp.sv
   - config.sv
   - functions.sv
