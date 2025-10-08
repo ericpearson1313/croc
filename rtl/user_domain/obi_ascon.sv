@@ -324,6 +324,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
 	// assemble the read only status word
 	logic [31:0] status_word; 
+	logic [31:0] status_word_reg;
 	always_comb begin
 		status_word = 0;
 		// assign 1 nibble per dma engine [19:0]
@@ -334,6 +335,9 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		status_word[26] = auth;
 		status_word[27] = auth_valid;
 		status_word[31:28] = bdo_type[3:0]; 
+	end
+	always_ff @(posedge clk_i) begin
+		status_word_reg <= status_word;
 	end
 	
   //////////////////////////
@@ -399,7 +403,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 					  ( raddr==1 ) ? dma_read_data[0] : 
     		                    	  ( raddr==2 ) ? dma_read_data[1] : 
     		                    	  ( raddr==3 ) ? dma_read_data[2] : 
-					  ( raddr==4 ) ? length : ( raddr==6 ) ? status_word :
+					  ( raddr==4 ) ? length : ( raddr==6 ) ? status_word_reg :
 					  ( raddr==13) ? ascon_ctrl :
 					  ( raddr==14) ? {28'h0, mode_reg } :
                                                          32'hdeadbeef;
