@@ -10,17 +10,6 @@
 
 `include "config.sv"
 
-// Swap byte order of bit vector:
-// in:   [0x00, 0x01, 0x02, 0x03]
-// =>
-// swap: [0x03, 0x02, 0x01, 0x00]
-function automatic logic [CCW-1:0] swap;
-  input logic [CCW-1:0] in;
-  for (int i = 0; i < CCW / 8; i += 1) begin
-    swap[(i*8)+:8] = in[((CCW/8-i-1)*8)+:8];
-  end
-endfunction
-
 // Pad input during ABS_AD, ABS_MSG (encryption):
 // in:  [0x00, 0x00, 0x11, 0x22]
 // val: [   0,    0,    1,    1]

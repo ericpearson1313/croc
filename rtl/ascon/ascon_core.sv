@@ -21,14 +21,14 @@ module ascon_core (
     input  logic       [  CCW-1:0] bdi,
     input  logic       [CCW/8-1:0] bdi_valid,
     output logic                   bdi_ready,
-    input  data_type_e             bdi_type,
+    input  data_e                  bdi_type,
     input  logic                   bdi_eot,
     input  logic                   bdi_eoi,
     input  mode_e                  mode,
     output logic       [  CCW-1:0] bdo,
     output logic                   bdo_valid,
     input  logic                   bdo_ready,
-    output data_type_e             bdo_type,
+    output data_e                  bdo_type,
     output logic                   bdo_eot,
     input  logic                   bdo_eoo,
     output logic                   auth,
@@ -47,6 +47,7 @@ module ascon_core (
 
   // FSM states
   typedef enum logic [4:0] {
+    INVALID  = 'd0,
     IDLE     = 'd1,
     LD_KEY   = 'd2,
     LD_NPUB  = 'd3,
@@ -74,8 +75,8 @@ module ascon_core (
   logic add_ad_pad, add_msg_pad;
 
   logic mode_enc_dec, mode_hash_xof;
-  assign mode_enc_dec  = (mode_r == M_ENC) || (mode_r == M_DEC);
-  assign mode_hash_xof = (mode_r == M_HASH) || (mode_r == M_XOF) || (mode_r == M_CXOF);
+  assign mode_enc_dec  = (mode_r == M_AEAD128_ENC) || (mode_r == M_AEAD128_DEC);
+  assign mode_hash_xof = (mode_r == M_HASH256) || (mode_r == M_XOF128) || (mode_r == M_CXOF128);
 
   logic idle_done, ld_key, ld_key_done, ld_npub, ld_npub_done, init, init_done, kadd_2_done;
   assign idle_done    = (fsm == IDLE) && (mode > 'd0);
@@ -115,12 +116,12 @@ module ascon_core (
   assign sqz_hash_done2 = ((hash_cnt == 'd3) && sqz_hash_done1) || (sqz_hash && bdo_eoo);
   assign sqz_tag        = (fsm == SQZ_TAG) && bdo_valid && bdo_ready;
   assign sqz_tag_done   = (word_cnt == (W128 - 1)) && sqz_tag;
-  assign ver_tag        = (fsm == VER_TAG) && (bdi_type == D_TAG) && bdi_ready;
+  assign ver_tag        = (fsm == VER_TAG) && (bdi_type == D_TAG) && bdi_ready && (bdi_valid != 'd0);
   assign ver_tag_done   = (word_cnt == (W128 - 1)) && ver_tag;
 
   assign last_abs_blk =
     (abs_ad  && mode_enc_dec     && (word_cnt == (W128 - 1))) ||
-    (abs_ad  && (mode_r==M_CXOF) && (word_cnt == ( W64 - 1))) ||
+    (abs_ad  && (mode_r==M_CXOF128) && (word_cnt == ( W64 - 1))) ||
     (abs_msg && mode_enc_dec     && (word_cnt == (W128 - 1))) ||
     (abs_msg && mode_hash_xof    && (word_cnt == ( W64 - 1)));
 
@@ -163,7 +164,7 @@ module ascon_core (
     bdi_ready = 'd0;
     bdo       = 'd0;
     bdo_valid = 'd0;
-    bdo_type  = D_NULL;
+    bdo_type  = D_INVALID;
     bdo_eot   = 'd0;
     bdi_pad   = 'd0;
     unique case (fsm)
@@ -184,31 +185,31 @@ module ascon_core (
       end
       ABS_MSG: begin
         state_idx = word_cnt;
-        if (mode_r == M_ENC || mode_hash_xof) begin
+        if (mode_r == M_AEAD128_ENC || mode_hash_xof) begin
           bdi_pad = pad(bdi, bdi_valid);
           state_nx = state_slice ^ bdi_pad;
           bdo = state_nx;
-        end else if (mode_r == M_DEC) begin
+        end else if (mode_r == M_AEAD128_DEC) begin
           bdi_pad = pad2(bdi, state_slice, bdi_valid);
           state_nx = bdi_pad;
           bdo = state_slice ^ state_nx;
         end
         bdi_ready = 'd1;
         bdo_valid = mode_enc_dec ? 'd1 : 'd0;
-        bdo_type  = mode_enc_dec ? D_MSG : D_NULL;
+        bdo_type  = mode_enc_dec ? D_MSG : D_INVALID;
         bdo_eot   = mode_enc_dec ? bdi_eot : 'd0;
-        if (mode_r == M_HASH) bdo = 'd0;
+        if (mode_r == M_HASH256) bdo = 'd0;
       end
       SQZ_TAG: begin
         state_idx = word_cnt + W192;
-        bdo       = swap(state_slice);
+        bdo       = state_slice;
         bdo_valid = 'd1;
         bdo_type  = D_TAG;
         bdo_eot   = word_cnt == (W128 - 1);
       end
       SQZ_HASH: begin
         state_idx = word_cnt;
-        bdo       = swap(state_slice);
+        bdo       = state_slice;
         bdo_valid = 'd1;
         bdo_type  = D_HASH;
         bdo_eot   = (hash_cnt == 'd3) && (word_cnt == (W64 - 1));
@@ -229,15 +230,15 @@ module ascon_core (
     fsm_nx = fsm;
     // Initialize:
     if (idle_done) begin
-      if (mode == M_ENC || mode == M_DEC) fsm_nx = key_valid ? LD_KEY : LD_NPUB;
-      if (mode == M_HASH || mode == M_XOF || mode == M_CXOF) fsm_nx = INIT;
+      if (mode == M_AEAD128_ENC || mode == M_AEAD128_DEC) fsm_nx = key_valid ? LD_KEY : LD_NPUB;
+      if (mode == M_HASH256 || mode == M_XOF128 || mode == M_CXOF128) fsm_nx = INIT;
     end
     if (ld_key_done) fsm_nx = LD_NPUB;
     if (ld_npub_done) fsm_nx = INIT;
     if (init_done) begin
       if (mode_enc_dec) fsm_nx = KADD_2;
-      if (mode_r == M_HASH || mode_r == M_XOF) fsm_nx = flag_eoi ? PAD_MSG : ABS_MSG;
-      if (mode_r == M_CXOF) fsm_nx = ABS_AD;
+      if (mode_r == M_HASH256 || mode_r == M_XOF128) fsm_nx = flag_eoi ? PAD_MSG : ABS_MSG;
+      if (mode_r == M_CXOF128) fsm_nx = ABS_AD;
     end
     if (kadd_2_done) begin
       if (flag_eoi) fsm_nx = DOM_SEP;
@@ -265,7 +266,7 @@ module ascon_core (
           fsm_nx = PAD_AD;
         end else begin
           if (mode_enc_dec) fsm_nx = DOM_SEP;
-          else if (mode_r == M_CXOF) begin
+          else if (mode_r == M_CXOF128) begin
             fsm_nx = flag_ad_eot ? (flag_eoi ? PAD_MSG : ABS_MSG) : ABS_MSG;
           end
         end
@@ -298,15 +299,15 @@ module ascon_core (
     end
     if (kadd_3_done) fsm_nx = FINAL;
     if (fin_done) begin
-      if (mode_r == M_HASH) fsm_nx = SQZ_HASH;
-      else if (mode_r == M_XOF || mode_r == M_CXOF) begin
+      if (mode_r == M_HASH256) fsm_nx = SQZ_HASH;
+      else if (mode_r == M_XOF128 || mode_r == M_CXOF128) begin
         fsm_nx = SQZ_HASH;
       end else fsm_nx = KADD_4;
     end
     // Finalize:
     // - AEAD           : Squeeze or verify tag
     // - HASH, XOF, CXOF: Squeeze hash
-    if (kadd_4_done) fsm_nx = (mode_r == M_DEC) ? VER_TAG : SQZ_TAG;
+    if (kadd_4_done) fsm_nx = (mode_r == M_AEAD128_DEC) ? VER_TAG : SQZ_TAG;
     if (sqz_hash_done1) fsm_nx = FINAL;
     if (sqz_hash_done2) fsm_nx = IDLE;
     if (sqz_tag_done) fsm_nx = IDLE;
@@ -340,12 +341,12 @@ module ascon_core (
         state[int'(lane_idx)][int'(word_idx)] <= state_slice ^ 'd1;
       end
       // State initialization: HASH, XOF, CXOF
-      if (idle_done && (mode == M_HASH || mode == M_XOF || mode == M_CXOF)) begin
+      if (idle_done && (mode == M_HASH256 || mode == M_XOF128 || mode == M_CXOF128)) begin
         state <= '0;
         unique case (mode)
-          M_HASH:  state[0] <= IV_HASH[0+:64];
-          M_XOF:   state[0] <= IV_XOF[0+:64];
-          M_CXOF:  state[0] <= IV_CXOF[0+:64];
+          M_HASH256:  state[0] <= IV_HASH[0+:64];
+          M_XOF128:   state[0] <= IV_XOF[0+:64];
+          M_CXOF128:  state[0] <= IV_CXOF[0+:64];
           default: ;
         endcase
       end
@@ -407,14 +408,14 @@ module ascon_core (
       if (fsm == PAD_AD) word_cnt <= 'd0;
       if (fsm == PAD_MSG) word_cnt <= 'd0;
       // Setting hash block counter
-      if (mode_r == M_HASH) begin
+      if (mode_r == M_HASH256) begin
         if (sqz_hash_done1) hash_cnt <= hash_cnt + 'd1;
         if (abs_ad_done && bdi_eoi) hash_cnt <= 'd0;
       end
       // Setting round counter
       unique case (fsm_nx)
         INIT:    round_cnt <= ROUNDS_A;
-        PRO_AD:  round_cnt <= (mode_r == M_CXOF) ? ROUNDS_A : ROUNDS_B;
+        PRO_AD:  round_cnt <= (mode_r == M_CXOF128) ? ROUNDS_A : ROUNDS_B;
         PRO_MSG: round_cnt <= mode_hash_xof ? ROUNDS_A : ROUNDS_B;
         FINAL:   round_cnt <= ROUNDS_A;
         default:;
@@ -452,7 +453,7 @@ module ascon_core (
       if (add_ad_pad) flag_ad_pad <= 'd1;
       if (abs_msg_done && bdi_eoi) flag_eoi <= 'd1;
       if (add_msg_pad) flag_ad_pad <= 'd1;
-      if (kadd_4_done && (mode_r == M_DEC)) auth_intern <= 'd1;
+      if (kadd_4_done && (mode_r == M_AEAD128_DEC)) auth_intern <= 'd1;
       if (ver_tag) auth_intern <= auth_intern && (bdi == state_slice);
       if (ver_tag_done) begin
         auth_valid <= 'd1;

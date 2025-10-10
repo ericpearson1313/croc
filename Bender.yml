@@ -199,7 +199,7 @@ vendor_package:
   # ASCON NIST SP800-232 Cipher hardware 
   - name: ascon
     target_dir: rtl/ascon
-    upstream: { git: "https://github.com/rprimas/ascon-verilog.git", rev: "fba1a545cbdb410610a00c45118fc885f2c59d17" }
+    upstream: { git: "https://github.com/rprimas/ascon-verilog.git", rev: "8a07e6418a59ecf6d1ed94bd5ae51eba640d88f6" }
     patch_dir: "rtl/patches/ascon"
     mapping:
       - { from: 'rtl/',                                         to: '',                      patch_dir: 'rtl/' }
