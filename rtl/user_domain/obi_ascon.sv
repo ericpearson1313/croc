@@ -107,7 +107,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 
 	// Ascon core interface signals
 	// Mode Control
-	logic [3:0]     mode;
+	mode_e          mode;
 	logic 		done; 
 	logic 		rst;
 	
@@ -120,7 +120,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	logic [31:0]	bdi;	
 	logic      	bdi_valid; // whole word valid
 	logic 		bdi_ready;	 	
-	logic [3:0]	bdi_type; // Inidates type of data
+	data_e     	bdi_type; // Inidates type of data
 	logic 		bdi_eot; // indicates end of data type	 	
 	logic 		bdi_eoi; // Indicates the end of input	 
 	// local vars
@@ -153,11 +153,11 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.bdi		( bdi[31:0] 	),
 		.bdi_valid	( {4{link&bdi_valid}}&bdi_be[3:0] ),
 		.bdi_ready	( bdi_ready 	),
-		.bdi_type	( data_type_e'({4{link&bdi_valid}}&bdi_type[3:0]) ), 
+		.bdi_type	( bdi_type      ), 
 		.bdi_eot	( link & bdi_valid & bdi_last & bdi_eot ),
 		.bdi_eoi	( link & bdi_valid & bdi_last & bdi_eoi ),
 		// mode control input
-		.mode		( mode_e'(mode[3:0]) ),
+		.mode		( mode ),
 		// connect to bdo write dma
 		.bdo		( bdo[31:0] 	),
 		.bdo_valid	( bdo_valid 	),
@@ -173,7 +173,9 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		.done       	( done 		)
 	);
 
-	assign { bdi_type[3:0], bdi_eot, bdi_eoi } = ascon_ctrl[5:0] | { cmd_type[3:0], cmd_eot, cmd_eoi };
+	assign bdi_type = ( ascon_ctrl[5:2] != 0 ) ? data_e'(ascon_ctrl[5:2]) : cmd_type;
+	assign bdi_eot  = ascon_ctrl[1]   | cmd_eot;
+	assign bdi_eoi  = ascon_ctrl[0]   | cmd_eoi;
 
 	// some hardwired connectoins
 	logic lio, link;
@@ -235,8 +237,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi read word stream input
 		.rvalid		( (link&bdo_valid)  || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10),
 		.rready		( bdo_ready ),
-		.rdata		( ( bdo_type == 4 ||
-                                    bdo_type == 5 ) ? { bdo[7:0], bdo[15:8], bdo[23:16], bdo[31:24] } : bdo ) // ascon fix hack endian swap
+		.rdata		( bdo       )
 	);
 	assign status_dma[1] = bdo_ready;
 	assign status_dev[1] = bdo_valid || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==10;
@@ -361,17 +362,17 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	always_ff @(posedge clk_i) begin
 		if( !rst_ni ) begin
 			mode_reg <= 0; // NOP
-			mode <= 0;
+			mode <= M_INVALID;
 		end else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==14 ) begin
 			mode_reg <= sbr_req_i.a.wdata[3:0]; // for readback
-			mode     <= sbr_req_i.a.wdata[3:0]; // single cycle pulse
+			mode     <= mode_e'(sbr_req_i.a.wdata[3:0]); // single cycle pulse
 		end else begin
 			mode	<= ( state == S_ENC_MODE  ||
 				     state == S_DEC_MODE  ||
 				     state == S_DEC2_MODE ||
                                      state == S_HASH_MODE ||
 				     state == S_XOF_MODE  ||
-				     state == S_CXOF_MODE  ) ? cmd_mode : 4'h0;
+				     state == S_CXOF_MODE  ) ? cmd_mode : M_INVALID;
 		end;
 	end
 
@@ -587,39 +588,39 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 	// Setup other data for cmd
 	// Length, BDI_type, LIO, EOI, EOT
 	logic cmd_dio; // flag that output discarded, set bdo_ready
-	logic [3:0] cmd_type;
+	data_e cmd_type;
 	logic [31:0] cmd_len;
 	logic cmd_lio, cmd_eoi, cmd_eot; 
 	logic cmd_eoo1, cmd_eoo2; // need 2 cycles as hashes are mult of 64
 	logic cmd_fifo;;
-	logic [3:0] cmd_mode;
+	mode_e cmd_mode;
 	always_comb begin
 		cmd_fifo =( state == S_DEC2_KEY   ||
                             state == S_DEC2_NONCE ||
                             state == S_DEC2_AD    ||
                             state == S_DEC2_MSG   ||
                             state == S_DEC2_TAG   ) ? 1'b1 : 1'b0;
-		cmd_mode =( state == S_ENC_MODE ) ? 4'h1 : 
-			  ( state == S_DEC_MODE ) ? 4'h2 :
-			  ( state == S_DEC2_MODE) ? 4'h2 :
-			  ( state == S_HASH_MODE) ? 4'h3 :
-			  ( state == S_XOF_MODE ) ? 4'h4 :
-			  ( state == S_CXOF_MODE) ? 4'h5 : 4'h0;
+		cmd_mode =( state == S_ENC_MODE ) ? M_AEAD128_ENC : 
+			  ( state == S_DEC_MODE ) ? M_AEAD128_DEC :
+			  ( state == S_DEC2_MODE) ? M_AEAD128_DEC :
+			  ( state == S_HASH_MODE) ? M_HASH256 :
+			  ( state == S_XOF_MODE ) ? M_XOF128 :
+			  ( state == S_CXOF_MODE) ? M_CXOF128 : M_INVALID;
 		cmd_type =( state == S_ENC_NONCE || state == S_ENC_NONCE_WAIT || 
                             state == S_DEC_NONCE || state == S_DEC_NONCE_WAIT ||
-                            state == S_DEC2_NONCE|| state == S_DEC2_NONCE_WAIT) ? 4'h1 :
+                            state == S_DEC2_NONCE|| state == S_DEC2_NONCE_WAIT) ? D_NONCE :
 			  ( state == S_ENC_AD    || state == S_ENC_AD_WAIT    || 
                             state == S_DEC_AD    || state == S_DEC_AD_WAIT    ||
-                            state == S_DEC2_AD   || state == S_DEC2_AD_WAIT   ) ? 4'h2 :
+                            state == S_DEC2_AD   || state == S_DEC2_AD_WAIT   ) ? D_AD :
 			  ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || 
                             state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ||
-                            state == S_DEC2_MSG  || state == S_DEC2_MSG_WAIT  ) ? 4'h3 : 
-			  ( state == S_HASH_MSG  || state == S_HASH_MSG_WAIT  ) ? 4'h3 : 
-			  ( state == S_XOF_MSG   || state == S_XOF_MSG_WAIT   ) ? 4'h3 : 
-			  ( state == S_CXOF_MSG  || state == S_CXOF_MSG_WAIT  ) ? 4'h3 : 
-			  ( state == S_CXOF_AD   || state == S_CXOF_AD_WAIT   ) ? 4'h2 : 
+                            state == S_DEC2_MSG  || state == S_DEC2_MSG_WAIT  ) ? D_MSG : 
+			  ( state == S_HASH_MSG  || state == S_HASH_MSG_WAIT  ) ? D_MSG : 
+			  ( state == S_XOF_MSG   || state == S_XOF_MSG_WAIT   ) ? D_MSG : 
+			  ( state == S_CXOF_MSG  || state == S_CXOF_MSG_WAIT  ) ? D_MSG : 
+			  ( state == S_CXOF_AD   || state == S_CXOF_AD_WAIT   ) ? D_AD : 
                           ( state == S_DEC_TAG   || state == S_DEC_TAG_WAIT   ||
-                            state == S_DEC2_TAG  || state == S_DEC2_TAG_WAIT  ) ? 4'h4 : 4'h0;
+                            state == S_DEC2_TAG  || state == S_DEC2_TAG_WAIT  ) ? D_TAG : D_INVALID;
 		cmd_lio = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   || state == S_DEC2_MSG  || state == S_DEC2_MSG_WAIT  ) ? 1'b1 : 1'b0;
 		cmd_dio = ( state == S_DEC_MSG   || state == S_DEC_MSG_WAIT   ) ? 1'b1 : 1'b0;
 		cmd_eoi = ( state == S_ENC_MSG   || state == S_ENC_MSG_WAIT   ||
