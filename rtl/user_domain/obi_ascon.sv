@@ -207,7 +207,7 @@ module obi_ascon import user_pkg::*; import croc_pkg::*; #(
 		// axi read word stream input
 		.rvalid		(  auth_valid_axi || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6 ),
 		.rready		(  auth_ready ),
-		.rdata		(( auth_valid_axi ) ? ( (auth) ? "ssap" : "laif" ) : sbr_req_i.a.wdata )
+		.rdata		(( auth_valid_axi ) ? ( (auth) ? "ssap" : "liaf" ) : sbr_req_i.a.wdata )
 	);
 	assign status_dma[0] = auth_ready;
 	assign status_dev[0] = auth_valid_axi || sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==6;
