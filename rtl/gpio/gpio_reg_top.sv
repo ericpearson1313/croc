@@ -60,7 +60,7 @@ module gpio_reg_top import gpio_reg_pkg::*; #(
     obi_rsp_o.r.rdata      = obi_rdata;
     obi_rsp_o.r.rid        = id_q;
     obi_rsp_o.r.err        = obi_err;
-    obi_rsp_o.gnt          = obi_req_i.req;
+    obi_rsp_o.gnt          = 1;
     obi_rsp_o.rvalid       = valid_q;
   end
 
@@ -163,7 +163,6 @@ module gpio_reg_top import gpio_reg_pkg::*; #(
     // WRITE
     //---------------------------------------------------------------------------------
     if (obi_write_request) begin
-      obi_err = 1'b0;
       case ({write_addr, 2'b00})
         GPIO_DIR_OFFSET: begin
           reg_d.dir = (~bit_mask & new_reg.dir) | (bit_mask & obi_wdata[GpioCount-1:0]);
@@ -201,7 +200,6 @@ module gpio_reg_top import gpio_reg_pkg::*; #(
     // READ
     //---------------------------------------------------------------------------------
     if (obi_read_request) begin
-      obi_err = 1'b0;
       case ({read_addr_q, 2'b00})
         GPIO_DIR_OFFSET: begin
           obi_rdata = reg_q.dir;
