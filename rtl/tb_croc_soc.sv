@@ -396,7 +396,6 @@ module tb_croc_soc #(
     end
 
 
-
     ////////////
     //  DUT   //
     ////////////
@@ -429,7 +428,7 @@ module tb_croc_soc #(
     );
 
     assign gpio_i[ 3:0]          = '0;
-    assign gpio_i[ 7:4]          = gpio_out_en_o[3:0] & gpio_o[3:0]; // loop back
+    //assign gpio_i[ 7:4]          = gpio_out_en_o[3:0] & gpio_o[3:0]; // loop back
     assign gpio_i[GpioCount-1:8] = '0;
 
 
@@ -481,4 +480,27 @@ module tb_croc_soc #(
         $finish();
     end
 
+    // User Code to read rotattions.txt input
+    // handshake with GPIO and send bytes into uart input
+    integer file, c;
+    initial begin
+	gpio_i[7:4] = 4'h0; // clear RTS
+	file = $fopen("rotations.txt", "r");
+	if( file ) begin
+		c = $fgetc(file);
+		while( c != -1 ) begin // until eof
+			gpio_i[7:4] = 4'hA; // Set RTS
+			while( gpio_o[3:0] != 4'hA ) @(posedge clk); // wait CTS
+        		uart_write_byte( c & 8'hff ); 
+			gpio_i[7:4] = 4'h0; // Clear RTS
+			while( gpio_o[3:0] == 4'hA ) @(posedge clk); // wait !CTS
+			c = $fgetc(file);
+		end
+		gpio_i[7:4] = 4'hE; // Signal EOF
+        	$display("AOC Done");
+  		$fclose(file);
+	end else begin
+        	$display("AOC file not found");
+	end
+    end
 endmodule

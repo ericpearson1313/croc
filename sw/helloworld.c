@@ -11,76 +11,59 @@
 #include "gpio.h"
 #include "util.h"
 
-/// @brief Example integer square root
-/// @return integer square root of n
-uint32_t isqrt(uint32_t n) {
-    uint32_t res = 0;
-    uint32_t bit = (uint32_t)1 << 30;
-
-    while (bit > n) bit >>= 2;
-
-    while (bit) {
-        if (n >= res + bit) {
-            n -= res + bit;
-            res = (res >> 1) + bit;
-        } else {
-            res >>= 1;
-        }
-        bit >>= 2;
-    }
-    return res;
-}
-
-char receive_buff[16] = {0};
 
 int main() {
+    // init uart, gpio
+    gpio_set_direction(0xFFFF, 0x000F); // 4 lsb's are output bits
+    gpio_enable(0xFF); 
+    gpio_write(0x00);
     uart_init(); // setup the uart peripheral
-
-    // simple printf support (only prints text and hex numbers)
-    printf("Hello World!\n");
-    // wait until uart has finished sending
+    printf("Hello Advent of Code 2025, Day 1!\n");
     uart_write_flush();
 
-    // uart loopback
-    uart_loopback_enable();
-    printf("internal msg\n");
-    sleep_ms(1);
-    for(uint8_t idx = 0; idx<15; idx++) {
-        receive_buff[idx] = uart_read();
-        if(receive_buff[idx] == '\n') {
-            break;
+    // Handshake bytes in via serial
+    char c = 0;
+    unsigned count = 0;
+    int status;
+    int sign;
+    int value;
+    
+    while(1) {
+	status = gpio_read()&0xf0;
+	while( status != 0xA0 && status != 0xE0 ) { // wait for RTS or EOF
+		status = gpio_read() & 0xf0;
         }
+	if( status == 0xE0 ) // EOF
+		break;
+    	gpio_write(0x0A); // set CTS
+    	c = uart_read(); // read char and comppute
+	switch( c ) {
+	  case 'L' : sign =  1; value = 0; break;
+	  case 'R' : sign =  0; value = 0; break;
+	  case '0' : case '1' : case '2' : case '3' : case '4' : case '5' : case '6' : case '7' : case '8' : case '9' :
+		// printf("char %x value %x\n", c, value);
+		value = (value*10) + (c-'0'); 
+		break;
+	  case 0xA : // cr
+		printf(((sign)?"-0x%x\n":"+0x%x\n" ), value );
+		count++;
+		break;
+	  default: 
+		break;
+	}
+	status = gpio_read()&0xf0;
+	//printf("status %x\n", status ); uart_write_flush();
+	//////////////////
+    	while( status == 0xA0 ){ // wait !RTS
+		status = gpio_read() & 0xf0;
+		//printf("status %x\n", status ); uart_write_flush();
+	}
+    	gpio_write(0x00); // clear CTS
     }
-    uart_loopback_disable();
 
-    printf("Loopback received: ");
-    printf(receive_buff);
+    // Print summary
+    printf("Count = 0x%x\n", count);
     uart_write_flush();
 
-    // toggling some GPIOs
-    gpio_set_direction(0xFFFF, 0x000F); // lowest four as outputs
-    gpio_write(0x0A);  // ready output pattern
-    gpio_enable(0xFF); // enable lowest eight
-    // wait a few cycles to give GPIO signal time to propagate
-    asm volatile ("nop; nop; nop; nop; nop;");
-    printf("GPIO (expect 0xA0): 0x%x\n", gpio_read());
-
-    gpio_toggle(0x0F); // toggle lower 8 GPIOs
-    asm volatile ("nop; nop; nop; nop; nop;");
-    printf("GPIO (expect 0x50): 0x%x\n", gpio_read());
-    uart_write_flush();
-
-    // doing some compute
-    uint32_t start = get_mcycle();
-    uint32_t res   = isqrt(1234567890UL);
-    uint32_t end   = get_mcycle();
-    printf("Result: 0x%x, Cycles: 0x%x\n", res, end - start);
-    uart_write_flush();
-
-    // using the timer
-    printf("Tick\n");
-    sleep_ms(10);
-    printf("Tock\n");
-    uart_write_flush();
     return 1;
 }
