@@ -115,4 +115,74 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
     .obi_rsp_o  ( user_error_obi_rsp )
   );
 
+  // ----------------------------------------------------------------------------------------------
+  // AOC Day 1 Hardware
+  // ----------------------------------------------------------------------------------------------
+  
+  // get user OBI subordinate register buss (mapped to 0x2000_0000
+  sbr_obi_req_t sbr_req_i;
+  sbr_obi_rsp_t sbr_rsp_o;
+  assign sbr_req_i = all_user_sbr_obi_req[UserDay1];
+  assign all_user_sbr_obi_rsp[UserDay1] = sbr_rsp_o;
+
+  // 3 Register interface
+  // Init accumulators, sets start state to N/2 (50)
+  // write rotation data, which will increment zero counts and update state
+  // Read sums
+
+  // State machine
+  // register input rotation
+  // divide rot/N -> div, rem
+  // accumulate div 
+  // calc if zero crossed (rem, state)
+  // Accumulate reg + state with optional single wrap
+  // zero detect and accumulateA
+  // block further read or writes until done
+  // day_part1 = sum_zerodetect
+  // day1_part2 = sum_zero_det + sum_zero_crossed + sum_div;
+
+	// OBI read Interface
+
+	logic [31:0] magic = 32'habcd1234;
+  	logic [SbrObiCfg.IdWidth-1:0] rid;
+	logic rvalid; 
+	logic [9:0] raddr;
+	always @(posedge clk_i) begin
+		raddr  <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.addr[11:2] : raddr; // word regs addr
+		rvalid <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? 1'b1 : 1'b0;
+		rid    <= ( sbr_rsp_o.gnt & sbr_req_i.req ) ? sbr_req_i.a.aid : rid;
+	end
+
+	always_comb begin
+	    	sbr_rsp_o 		= '0;
+    		sbr_rsp_o.gnt      	= 1'b1; // non blocking
+    		sbr_rsp_o.r.rdata 	= 
+					  ( raddr==0 ) ? magic :	// write here inits
+					  ( raddr==1 ) ? { rot_sign, rot } : // write here is sign, rot and inits operations
+    		                    	  ( raddr==2 ) ? { sum_part1[15:0], sum_part2[15:0] } : // always holds the results
+    		                    	  ( raddr==3 ) ? 32'h0000_0003 :
+                                                         32'hdeadbeef;
+    		sbr_rsp_o.r.rid   	= rid;
+    		sbr_rsp_o.rvalid   	= rvalid; 
+    	end
+
+	// OBI Write Interface
+
+	// rot_reg (rotation reg)
+	// length register (3)
+	logic rot_sign;
+	logic [30:0] rot;
+	logic [15:0] sum_part1;
+	logic [15:0] sum_part2;
+	logic [15:0] sum_div;
+	logic [15:0] sum_cross_zero;
+	logic [15:0] sum_eq_zero;
+	always_ff @(posedge clk_i) begin
+		if( !rst_ni ) begin
+			rot_sign <= 0; // 0 +ve, 1 -ve
+			rot      <= 32'h0;
+		end else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==1 ) begin
+			{ rot_sign, rot } <= sbr_req_i.a.wdata;
+		end
+	end
 endmodule
