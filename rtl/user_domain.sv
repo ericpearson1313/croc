@@ -275,30 +275,30 @@ module user_div(
 	);
 	logic [0:3][31:0] denom;
 	logic [63:0] numer;
+	logic [0:3][31:0] remd; // remainder per q
 	always_ff @(posedge clk) begin
 		if( go ) begin
-		   	denom[0][13:0] <= 0;
-		   	denom[1][13:0] <= { 3'b000, denom_in[10:0] };
-		   	denom[2][13:0] <= { 3'b000, denom_in[10:0] }        + { 3'b000, denom_in[10:0] };
-			denom[3][13:0] <= { 2'b00 , denom_in[10:0] , 1'b0 } + { 3'b000, denom_in[10:0] };				
+		   	denom[0][31:0] <= 0;
+		   	denom[1][31:0] <= denom_in[31:0];
+		   	denom[2][31:0] <= { denom_in[30:0], 1'b0 };
+			denom[3][31:0] <= { denom_in[30:0], 1'b0 } + denom_in[31:0];				
 			numer <= { 32'h0, numer_in[31:0] };
 			quotient <= 0;		
 		end else begin
 			quotient[31:2] <= quotient[29:0];
-			quotient[1:0] <= ( !remd[3][13] ) ? 2'b11 :
-			                 ( !remd[2][13] ) ? 2'b10 :
-			                 ( !remd[1][13] ) ? 2'b01 : 2'b00 ;
+			quotient[1:0] <= ( !remd[3][31] ) ? 2'b11 :
+			                 ( !remd[2][31] ) ? 2'b10 :
+			                 ( !remd[1][31] ) ? 2'b01 : 2'b00 ;
 			numer[1:0]   <= 2'b00;
 			numer[63:2]  <= numer[61:0];
 		end
 	end
 	
 	// combinatorial Divide steps and remainder logic
-	logic [0:3][31:0] remd; // remainder per q
-	assign remd[0][13:0] = numer[38-:14] - denom[0][13:0]; // dummy
-	assign remd[1][13:0] = numer[38-:14] - denom[1][13:0];
-	assign remd[2][13:0] = numer[38-:14] - denom[2][13:0];
-	assign remd[3][13:0] = numer[38-:14] - denom[3][13:0];
+	assign remd[0][31:0] = numer[63-:32] - denom[0][31:0]; // dummy
+	assign remd[1][31:0] = numer[63-:32] - denom[1][31:0];
+	assign remd[2][31:0] = numer[63-:32] - denom[2][31:0];
+	assign remd[3][31:0] = numer[63-:32] - denom[3][31:0];
 	assign rem[31:0] = ( !remd[3][31] ) ? remd[3] : ( !remd[2][31] ) ? remd[2] : ( !remd[1][31] ) ? remd[1] : remd[0] ;
 
 endmodule
