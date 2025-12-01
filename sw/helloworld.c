@@ -34,7 +34,7 @@ int main() {
     hw_reg[1] = 0x3456789;
     printf("Magic = %x\n", hw_reg[0] );
     printf("Read 1= %x\n", hw_reg[1] );
-    
+    hw_reg[0] = 0; // Init the aoc hardware
     while(1) {
 	status = gpio_read()&0xf0;
 	while( status != 0xA0 && status != 0xE0 ) { // wait for RTS or EOF
@@ -53,6 +53,7 @@ int main() {
 		break;
 	  case 0xA : // cr
 		printf(((sign)?"-0x%x\n":"+0x%x\n" ), value );
+		hw_reg[1] = (sign << 31) | value;
 		count++;
 		break;
 	  default: 
@@ -60,7 +61,6 @@ int main() {
 	}
 	status = gpio_read()&0xf0;
 	//printf("status %x\n", status ); uart_write_flush();
-	//////////////////
     	while( status == 0xA0 ){ // wait !RTS
 		status = gpio_read() & 0xf0;
 		//printf("status %x\n", status ); uart_write_flush();
@@ -70,6 +70,7 @@ int main() {
 
     // Print summary
     printf("Count = 0x%x\n", count);
+    printf("Part 1 = %x, Part 2 = %x\n", hw_reg[2]>>16, hw_reg[2]&0xffff );
     uart_write_flush();
 
     return 1;

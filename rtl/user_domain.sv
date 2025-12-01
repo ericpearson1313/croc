@@ -174,15 +174,133 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 	logic [30:0] rot;
 	logic [15:0] sum_part1;
 	logic [15:0] sum_part2;
-	logic [15:0] sum_div;
-	logic [15:0] sum_cross_zero;
-	logic [15:0] sum_eq_zero;
 	always_ff @(posedge clk_i) begin
 		if( !rst_ni ) begin
 			rot_sign <= 0; // 0 +ve, 1 -ve
 			rot      <= 32'h0;
 		end else if( sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==1 ) begin
-			{ rot_sign, rot } <= sbr_req_i.a.wdata;
+			{ rot_sign, rot[30:0] } <= sbr_req_i.a.wdata;
 		end
 	end
+
+	// Delay line timing trigger by rot write (in lieu of state machine)
+	logic [49:0] tick;
+	always_ff @(posedge clk_i) begin
+		if( !rst_ni ) begin
+			tick <= 0;
+		end else if (sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==1 ) begin
+			tick <= 50'h1;
+		end else begin
+			tick <= { tick[48:0], 1'b0 };
+		end
+	end
+
+	// Set up the final sum adders
+	logic [15:0] sum_wrap;
+	logic [15:0] sum_cross_zero;
+	logic [15:0] sum_eq_zero;
+	assign sum_part1 = sum_eq_zero;
+	assign sum_part2 = sum_eq_zero + sum_wrap + sum_cross_zero;
+
+	
+	// State reg
+	localparam N = 32'd100; // Fixed
+	logic [31:0] state; // only need to hold 0 ... N-1
+	
+
+	// Divider and sum wrap
+	// start on tick 0
+
+	logic [31:0] div, rem;
+	user_div i_div (
+		.clk( clk_i ),
+		.go( tick[0] ),
+		.numer_in( rot ),
+		.denom_in( N ),
+		.quotient( div ),
+		.rem( rem )
+	);
+
+	logic [31:0] rem_reg;
+	always_ff @(posedge clk_i) begin
+		if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
+			sum_wrap <= 0;
+			rem_reg <= 0;
+		end else if( tick[16] ) begin
+			rem_reg <= rem;
+			sum_wrap <= sum_wrap + div;
+		end
+	end;
+
+	// Zero crossing logic (rem, state) and sum cross
+	// detect when zero is crossed when moving state to new state
+
+	logic zero_cross;
+	assign zero_cross = ( rot_sign ) ? ( ( rem_reg > state && state != 0  ) ? 1'b1 : 1'b0 ) 
+                                         : ( ( rem_reg > ( N - state )        ) ? 1'b1 : 1'b0 );
+	always_ff @(posedge clk_i) begin
+                if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
+                        sum_cross_zero <= 0;
+		end else if( tick[17] && zero_cross ) begin // negative
+			sum_cross_zero <= sum_cross_zero + 1;
+		end
+	end // comb
+	
+
+	// State addition rem+state with wrap and sum eq zero
+
+	logic [31:0] next_state;
+	assign next_state = ( rot_sign ) ? ( ( rem_reg > state     ) ? state + N - rem_reg : state - rem_reg ) 
+                                         : ( ( rem_reg + state > N ) ? state + rem_reg - N : state + rem_reg );
+	
+	always_ff @(posedge clk_i) begin
+                if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
+                        sum_eq_zero <= 0;
+			state <= N>>1; // 50
+		end else if( tick[17] ) begin // negative
+			sum_eq_zero <= ( next_state == 0 ) ? sum_eq_zero + 1 : sum_eq_zero;
+			state <= next_state;
+		end
+	end // comb
 endmodule
+
+// Peforms d/n at 2 bits per cycle
+module user_div(
+	input logic clk,
+	input logic go, // start pulse
+	input logic [31:0] numer_in,
+	input logic [31:0] denom_in,
+	output logic [31:0] quotient,
+	output logic [31:0] rem
+	);
+	logic [0:3][31:0] denom;
+	logic [63:0] numer;
+	always_ff @(posedge clk) begin
+		if( go ) begin
+		   	denom[0][13:0] <= 0;
+		   	denom[1][13:0] <= { 3'b000, denom_in[10:0] };
+		   	denom[2][13:0] <= { 3'b000, denom_in[10:0] }        + { 3'b000, denom_in[10:0] };
+			denom[3][13:0] <= { 2'b00 , denom_in[10:0] , 1'b0 } + { 3'b000, denom_in[10:0] };				
+			numer <= { 32'h0, numer_in[31:0] };
+			quotient <= 0;		
+		end else begin
+			quotient[31:2] <= quotient[29:0];
+			quotient[1:0] <= ( !remd[3][13] ) ? 2'b11 :
+			                 ( !remd[2][13] ) ? 2'b10 :
+			                 ( !remd[1][13] ) ? 2'b01 : 2'b00 ;
+			numer[1:0]   <= 2'b00;
+			numer[63:2]  <= numer[61:0];
+		end
+	end
+	
+	// combinatorial Divide steps and remainder logic
+	logic [0:3][31:0] remd; // remainder per q
+	assign remd[0][13:0] = numer[38-:14] - denom[0][13:0]; // dummy
+	assign remd[1][13:0] = numer[38-:14] - denom[1][13:0];
+	assign remd[2][13:0] = numer[38-:14] - denom[2][13:0];
+	assign remd[3][13:0] = numer[38-:14] - denom[3][13:0];
+	assign rem[31:0] = ( !remd[3][31] ) ? remd[3] : ( !remd[2][31] ) ? remd[2] : ( !remd[1][31] ) ? remd[1] : remd[0] ;
+
+endmodule
+
+
