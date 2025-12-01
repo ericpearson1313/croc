@@ -12,6 +12,8 @@
 #include "util.h"
 
 
+volatile long *hw_reg = ((long *)0x20000000); // address of aoc HW
+
 int main() {
     // init uart, gpio
     gpio_set_direction(0xFFFF, 0x000F); // 4 lsb's are output bits
@@ -27,6 +29,11 @@ int main() {
     int status;
     int sign;
     int value;
+
+
+    hw_reg[1] = 0x3456789;
+    printf("Magic = %x\n", hw_reg[0] );
+    printf("Read 1= %x\n", hw_reg[1] );
     
     while(1) {
 	status = gpio_read()&0xf0;
