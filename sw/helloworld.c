@@ -44,12 +44,16 @@ int main() {
 	switch( c ) {
 	  case ','  : 
           case 0x0A : // write upper range as 2 words, triggers error finding and accumulation
-		printf("Upper range msb 0x%x lsb 0x%x\n", (int)(bcd>>32), (int)(bcd&0xFFFFFFFF));
+		hw_reg[3] = (unsigned)(bcd&0xFFFFFFFF);
+		hw_reg[4] = (unsigned)(bcd>>32);
+		printf("Upper range msb 0x%x lsb 0x%x\n", hw_reg[2], hw_reg[1] );
 		bcd = 0; 
 		count++;
 		break;
 	  case '-' : // write lower range as 2 words
-		printf("Lower range msb 0x%x lsb 0x%x\n", (int)(bcd>>32), (int)(bcd&0xFFFFFFFF));
+		hw_reg[1] = (unsigned)(bcd&0xFFFFFFFF);
+		hw_reg[2] = (unsigned)(bcd>>32);
+		printf("Lower range msb 0x%x lsb 0x%x\n", hw_reg[4], hw_reg[3] );
 		bcd=0; 
 		break;
 	  case '0' : case '1' : case '2' : case '3' : case '4' : case '5' : case '6' : case '7' : case '8' : case '9' :
@@ -69,7 +73,7 @@ int main() {
     }
 
     // Print summary
-    printf("\e[32mNum Ranges = 0x%x, Day 2 sum msb = 0x%x, lsb 0x%x\e[0m\n", count, hw_reg[2],  hw_reg[2] );
+    printf("\e[32mNum Ranges = 0x%x, Day 2 sum msb = 0x%x, lsb 0x%x\e[0m\n", count, hw_reg[6],  hw_reg[5] );
     uart_write_flush();
 
     return 1;
