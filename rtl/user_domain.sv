@@ -226,7 +226,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 		if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
 			sum_wrap <= 0;
 			rem_reg <= 0;
-		end else if( tick[16] ) begin
+		end else if( tick[17] ) begin
 			rem_reg <= rem;
 			sum_wrap <= sum_wrap + div;
 		end
@@ -241,7 +241,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 	always_ff @(posedge clk_i) begin
                 if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
                         sum_cross_zero <= 0;
-		end else if( tick[17] && zero_cross ) begin // negative
+		end else if( tick[18] && zero_cross ) begin // negative
 			sum_cross_zero <= sum_cross_zero + 1;
 		end
 	end // comb
@@ -251,13 +251,13 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 
 	logic [31:0] next_state;
 	assign next_state = ( rot_sign ) ? ( ( rem_reg > state     ) ? state + N - rem_reg : state - rem_reg ) 
-                                         : ( ( rem_reg + state > N ) ? state + rem_reg - N : state + rem_reg );
+                                         : ( ( rem_reg + state >= N) ? state + rem_reg - N : state + rem_reg );
 	
 	always_ff @(posedge clk_i) begin
                 if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
                         sum_eq_zero <= 0;
 			state <= N>>1; // 50
-		end else if( tick[17] ) begin // negative
+		end else if( tick[18] ) begin // negative
 			sum_eq_zero <= ( next_state == 0 ) ? sum_eq_zero + 1 : sum_eq_zero;
 			state <= next_state;
 		end
