@@ -218,7 +218,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 		.numer_in( rot ),
 		.denom_in( N ),
 		.quotient( div ),
-		.rem( rem )
+		.rem_out( rem )
 	);
 
 	logic [31:0] rem_reg;
@@ -226,7 +226,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 		if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
 			sum_wrap <= 0;
 			rem_reg <= 0;
-		end else if( tick[17] ) begin
+		end else if( tick[18] ) begin
 			rem_reg <= rem;
 			sum_wrap <= sum_wrap + div;
 		end
@@ -241,7 +241,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 	always_ff @(posedge clk_i) begin
                 if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
                         sum_cross_zero <= 0;
-		end else if( tick[18] && zero_cross ) begin // negative
+		end else if( tick[19] && zero_cross ) begin // negative
 			sum_cross_zero <= sum_cross_zero + 1;
 		end
 	end // comb
@@ -257,7 +257,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
                 if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
                         sum_eq_zero <= 0;
 			state <= N>>1; // 50
-		end else if( tick[18] ) begin // negative
+		end else if( tick[19] ) begin // negative
 			sum_eq_zero <= ( next_state == 0 ) ? sum_eq_zero + 1 : sum_eq_zero;
 			state <= next_state;
 		end
@@ -271,10 +271,11 @@ module user_div(
 	input logic [31:0] numer_in,
 	input logic [31:0] denom_in,
 	output logic [31:0] quotient,
-	output logic [31:0] rem
+	output logic [31:0] rem_out
 	);
 	logic [0:3][31:0] denom;
 	logic [63:0] numer;
+	logic [31:0] rem;
 	logic [0:3][31:0] remd; // remainder per q
 	always_ff @(posedge clk) begin
 		if( go ) begin
@@ -290,7 +291,9 @@ module user_div(
 			                 ( !remd[2][31] ) ? 2'b10 :
 			                 ( !remd[1][31] ) ? 2'b01 : 2'b00 ;
 			numer[1:0]   <= 2'b00;
-			numer[63:2]  <= numer[61:0];
+			numer[33:2]  <= numer[31:0];
+			numer[63:34] <= rem[29:0];
+			rem_out	     <= rem;
 		end
 	end
 	
