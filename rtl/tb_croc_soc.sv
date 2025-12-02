@@ -497,7 +497,6 @@ module tb_croc_soc #(
 			c = $fgetc(file);
 		end
 		gpio_i[7:4] = 4'hE; // Signal EOF
-        	$display("AOC Done");
   		$fclose(file);
 	end else begin
         	$display("AOC file not found");

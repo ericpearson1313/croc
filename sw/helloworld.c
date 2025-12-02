@@ -31,9 +31,8 @@ int main() {
     int value;
 
 
-    hw_reg[1] = 0x3456789;
-    printf("Magic = %x\n", hw_reg[0] );
-    printf("Read 1= %x\n", hw_reg[1] );
+    //printf("Magic = %x\n", hw_reg[0] );
+    //printf("Read 1= %x\n", hw_reg[1] );
     hw_reg[0] = 0; // Init the aoc hardware
     while(1) {
 	status = gpio_read()&0xf0;
@@ -52,8 +51,8 @@ int main() {
 		value = (value*10) + (c-'0'); 
 		break;
 	  case 0xA : // cr
-		printf(((sign)?"-0x%x\n":"+0x%x\n" ), value );
-		hw_reg[1] = (sign << 31) | value;
+		//printf(((sign)?"-0x%x\n":"+0x%x\n" ), value );
+		hw_reg[1] = (sign << 31) | value; // Give data to hw
 		count++;
 		break;
 	  default: 
@@ -69,8 +68,7 @@ int main() {
     }
 
     // Print summary
-    printf("Count = 0x%x\n", count);
-    printf("Part 1 = %x, Part 2 = %x\n", hw_reg[2]>>16, hw_reg[2]&0xffff );
+    printf("\e[32mNum Rotations = 0x%x, Day 1 Part 1 = 0x%x, Part 2 = 0x%x\e[0m\n", count, hw_reg[2]>>16,  hw_reg[2]&0xffff );
     uart_write_flush();
 
     return 1;
