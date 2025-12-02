@@ -1,3 +1,50 @@
+
+Upping the ante a bit an challenging myself to design a chip specifically for the AoC 2025 Day-1 puzzle solution generation.
+
+![aoc_day1_chip_gds](croc_day1_gds.png)
+
+The puzzle input text would be sent into the chip as rs232, and the output would be 
+puzzle answer (sums) for both part 1 and 2.
+
+I designed this writing C and system Verilog code. 
+It simulates correctly with the example and puzzle rotation text files.
+and timing closes after place and route. The full gds chip data is built and viewed.
+
+Why a chip? Well the modulus for the day 1 puzzle was N=100, while the verilog is built for any 32-bit N and this could be furhter extended into interesting realms. Building chips with a baked in secrets enables their use without modification or exposure.
+
+How can a chip be designed in a day, well if you start with a working chip design it
+can be modified quite quickly.
+
+Starting with the taped-out tiny Pulp Croc chip (their readme is below)
+- added a text filet which contrains the puzzle data provided by the aoc. verilator/rotations.txt
+- inserted verilog to read the day 1 data file and send to chip on a uart pin (with handshaking) rlt/tb_croc_soc.sv
+- modified main C funciton which is compiled to run on the tiny RiscV within the chip. sw/helloworld.c
+- C code reads and parses the character stream and write rotations {dir,clicks} to a memory mapped hw register
+- Configured the croc user bus to add a slave OBI port rtl/user_pkg.sv
+- Verilog code was written interface to the OBI bus (write init, write rotation, read sums ) rtl/user_domain.sv
+- and sdded the rotate and zero counting hardware needed to solve the puzzle.
+
+Running the simulation with the rotations
+
+	make verilator
+
+When the full day 1 rotation file is used, the simulation results pass.
+
+![aoc_day1_sim](croc_day1_sim.png)
+
+The full chip layout flow can be run resulting in the layout shown above. After a bit of fixing (including a few leaks in the 
+gpio lib) I was able to pass all timing, and a complete layout and GDS was generated.
+
+    make yosys-flist
+    make yosys
+    make openroad
+    make klayout
+
+Pretty awsome I think.
+
+The distributed croc readme follows.
+
+-----------------------------------
 # Croc System-on-Chip
 
 A simple SoC for education using PULP IPs. Croc includes all scripts necessary to produce a nearly finished chip in [IHPs open-source 130nm technology](https://github.com/IHP-GmbH/IHP-Open-PDK/tree/main).
