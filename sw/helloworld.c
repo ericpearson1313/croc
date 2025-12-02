@@ -20,16 +20,14 @@ int main() {
     gpio_enable(0xFF); 
     gpio_write(0x00);
     uart_init(); // setup the uart peripheral
-    printf("Hello Advent of Code 2025, Day 1!\n");
+    printf("Hello Advent of Code 2025, Day 2!\n");
     uart_write_flush();
 
     // Handshake bytes in via serial
     char c = 0;
     unsigned count = 0;
-    int status;
-    int sign;
-    int value;
-
+    unsigned status;
+    long long bcd = 0;; // input bcd integers 64bit, 16 digit
 
     //printf("Magic = %x\n", hw_reg[0] );
     //printf("Read 1= %x\n", hw_reg[1] );
@@ -44,16 +42,19 @@ int main() {
     	gpio_write(0x0A); // set CTS
     	c = uart_read(); // read char and comppute
 	switch( c ) {
-	  case 'L' : sign =  1; value = 0; break;
-	  case 'R' : sign =  0; value = 0; break;
-	  case '0' : case '1' : case '2' : case '3' : case '4' : case '5' : case '6' : case '7' : case '8' : case '9' :
-		// printf("char %x value %x\n", c, value);
-		value = (value*10) + (c-'0'); 
-		break;
-	  case 0xA : // cr
-		//printf(((sign)?"-0x%x\n":"+0x%x\n" ), value );
-		hw_reg[1] = (sign << 31) | value; // Give data to hw
+	  case ','  : 
+          case 0x0A : // write upper range as 2 words, triggers error finding and accumulation
+		printf("Upper range msb 0x%x lsb 0x%x\n", (int)(bcd>>32), (int)(bcd&0xFFFFFFFF));
+		bcd = 0; 
 		count++;
+		break;
+	  case '-' : // write lower range as 2 words
+		printf("Lower range msb 0x%x lsb 0x%x\n", (int)(bcd>>32), (int)(bcd&0xFFFFFFFF));
+		bcd=0; 
+		break;
+	  case '0' : case '1' : case '2' : case '3' : case '4' : case '5' : case '6' : case '7' : case '8' : case '9' :
+		//printf("char %x\n", c );
+		bcd = (bcd<<4) + (c-'0'); // shift in bcd
 		break;
 	  default: 
 		break;
@@ -68,7 +69,7 @@ int main() {
     }
 
     // Print summary
-    printf("\e[32mNum Rotations = 0x%x, Day 1 Part 1 = 0x%x, Part 2 = 0x%x\e[0m\n", count, hw_reg[2]>>16,  hw_reg[2]&0xffff );
+    printf("\e[32mNum Ranges = 0x%x, Day 2 sum msb = 0x%x, lsb 0x%x\e[0m\n", count, hw_reg[2],  hw_reg[2] );
     uart_write_flush();
 
     return 1;

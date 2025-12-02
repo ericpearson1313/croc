@@ -485,7 +485,7 @@ module tb_croc_soc #(
     integer file, c;
     initial begin
 	gpio_i[7:4] = 4'h0; // clear RTS
-	file = $fopen("rotations.txt", "r");
+	file = $fopen("puzzle.txt", "r");
 	if( file ) begin
 		c = $fgetc(file);
 		while( c != -1 ) begin // until eof
@@ -499,7 +499,7 @@ module tb_croc_soc #(
 		gpio_i[7:4] = 4'hE; // Signal EOF
   		$fclose(file);
 	end else begin
-        	$display("AOC file not found");
+        	$display("AOC puzzle.txt not found");
 	end
     end
 endmodule
