@@ -1,32 +1,26 @@
 
 Another croc chip for the 2025 Day-2 puzzle solution generation.
 
-Same I/O structure as before, puzzle text goes into the chip via rs232 uart and answer sum is returned via same.
+Because we can re-use the I/O structure as before, puzzle text goes into the chip via rs232 uart and answer sum is returned via same.
 
-What can I saym C and Verilog code is a happy place.
+What can I say C and Verilog code is a happy place.
 
-Starting with the taped-out tiny Pulp Croc chip (their readme is below)
+Starting with the Day 1 chip, based on the pulp croc chip (their readme is below)
 - added a text filet which contrains the puzzle data provided by the aoc. verilator/puzzle.txt
-- inserted verilog to read the day 1 data file and send to chip on a uart pin (with handshaking) rlt/tb_croc_soc.sv
-- modified main C funciton which is compiled to run on the tiny RiscV within the chip. sw/helloworld.c
-- C code reads and parses the character stream and write rotations {dir,clicks} to a memory mapped hw register
-- Configured the croc user bus to add a slave OBI port rtl/user_pkg.sv
-- Verilog code was written interface to the OBI bus (write init, write rotation, read sums ) rtl/user_domain.sv
-- and sdded the range based error detection using BCD represetatio and accumulator to solve the puzzle.
+- modified verilog to read the day 2 data file and send to chip on a uart pin (with handshaking) rlt/tb_croc_soc.sv
+- modified C code to parses the puzzle byte stream aud build BCD lower and upper ranges and writes them to 4 memory mapped hw register sw/helloworld.c
+- added the Day 2 range based error detection using BCD represetatio and accumulator to solve the puzzle. rtl/user_domain.sv
 
-Plat Running the simulation with:
+Running the simulation with:
 
 	make verilator
 
-and, Building the chip with:
+gives us the day 2 part 1 calcualtion. I didn't see the part 2 puzzle until I submitted this correct one.
+I'll have to give it a think and maybe circle back and try part 2.
 
-    make yosys-flist
-    make yosys
-    make openroad
-    make klayout
+![Day2sim](croc_day2_sim.png)
 
-
-In progress
+Done for now .... maybe part 2 later.
 
 The distributed croc readme follows.
 
