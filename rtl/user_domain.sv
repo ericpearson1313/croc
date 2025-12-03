@@ -185,17 +185,17 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 	logic [4:0] upper_digits, lower_digits, digits;
 	always_comb begin
 		for( int ii = 0; ii < 16; ii++ ) begin
-			uflag[ii] = |upper_reg[ii*4-:4];
-			lflag[ii] = |lower_reg[ii*4-:4];
+			uflag[ii] = |upper_reg[ii*4+3-:4];
+			lflag[ii] = |lower_reg[ii*4+3-:4];
 		end
 		upper_digits = ( uflag[15] ) ? 5'd16 : ( uflag[14] ) ? 5'd15 : ( uflag[13] ) ? 5'd14 : ( uflag[12] ) ? 5'd13 :
                                ( uflag[11] ) ? 5'd12 : ( uflag[10] ) ? 5'd11 : ( uflag[ 9] ) ? 5'd10 : ( uflag[ 8] ) ? 5'd9  :
                                ( uflag[ 7] ) ? 5'd8  : ( uflag[ 6] ) ? 5'd7  : ( uflag[ 5] ) ? 5'd6  : ( uflag[ 4] ) ? 5'd5  :
-                               ( uflag[ 3] ) ? 5'd4  : ( uflag[ 2] ) ? 5'd3  : ( uflag[ 1] ) ? 5'd2  : 5'd0;
+                               ( uflag[ 3] ) ? 5'd4  : ( uflag[ 2] ) ? 5'd3  : ( uflag[ 1] ) ? 5'd2  : ( uflag[ 0] ) ? 5'd1  : 5'd0;
 		lower_digits = ( lflag[15] ) ? 5'd16 : ( lflag[14] ) ? 5'd15 : ( lflag[13] ) ? 5'd14 : ( lflag[12] ) ? 5'd13 :
                                ( lflag[11] ) ? 5'd12 : ( lflag[10] ) ? 5'd11 : ( lflag[ 9] ) ? 5'd10 : ( lflag[ 8] ) ? 5'd9  :
                                ( lflag[ 7] ) ? 5'd8  : ( lflag[ 6] ) ? 5'd7  : ( lflag[ 5] ) ? 5'd6  : ( lflag[ 4] ) ? 5'd5  :
-                               ( lflag[ 3] ) ? 5'd4  : ( lflag[ 2] ) ? 5'd3  : ( lflag[ 1] ) ? 5'd2  :  5'd0;
+                               ( lflag[ 3] ) ? 5'd4  : ( lflag[ 2] ) ? 5'd3  : ( lflag[ 1] ) ? 5'd2  : ( lflag[ 0] ) ? 5'd1  : 5'd0;
 		digits <= (!upper_digits[0] && !lower_digits[0]) ?  upper_digits : // E-E
 		          ( upper_digits[0] && !lower_digits[0]) ?  lower_digits : // O-E
 		          (!upper_digits[0] &&  lower_digits[0]) ?  upper_digits : // E-O
@@ -218,20 +218,26 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 				adjust_upper[ii*4+3-:4] = ( ii <= lower_digits ) ? 4'h9 : 4'h0;
 			end
 			adjust_lower = lower_reg;
-		end else begin // dont touch
+		end else if ( lower_digits == upper_digits && !lower_digits[0] ) begin // lower=upper, both  even
+			// untouched
 			adjust_upper = upper_reg;
 			adjust_lower = lower_reg;
+		end else begin // both are odd, error case
+			// lower > upper so it will be ignored
+			adjust_upper = 64'h0;
+			adjust_lower = {16{4'h1}};
 		end
 	end // always
 
 	// Snapshot registers 
-
 	logic [63:0] hold_upper;
 	logic [63:0] hold_lower;
 	logic [31:0] test_upper;  // we will use this as a bcd counter, starting at lower upper-half
 	logic [5:0] hold_digits;
+	logic valid; // Hold data valid for at least 1 cycle
 	always_ff @(posedge clk_i) begin
 		if( tick[0] ) begin
+			valid <= 1;
 			hold_upper <= adjust_upper;
 			hold_lower <= adjust_lower;
 			hold_digits <= digits;
@@ -240,50 +246,69 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 			hold_upper <= hold_upper;
 			hold_lower <= hold_lower;
 			hold_digits <= hold_digits;
-			test_upper <= ( test_upper < hold_upper ) ? inc_sum : test_upper; // auto inc until limit reached
+			test_upper <= ( trial <= hold_upper ) ? inc_sum : test_upper; // auto inc until limit reached
+			valid <= ( trial <= hold_upper ) ? 1'b1 : 1'b0;
 		end
 	end
 	
 	// create a trial candiate, and test if in range
 	logic [63:0] trial;
 	logic in_range;
-	assign trial = test_upper | test_upper << ( hold_digits << 1 ); // test sequence repeated
+	assign trial = test_upper | test_upper << ( hold_digits << 1 ); // candidate error sequence repeated eg 13541354
 	assign in_range = ( trial <= hold_upper && trial >= hold_lower ) ? 1'b1 : 1'b0; // comparison of bcd works here
 
 	// BCD +1 adder, to increment test_upper[31:0]
-	logic [8:0] inc_carry;
 	logic [31:0] inc_sum;
-	always_comb begin
-		inc_carry[0] = 1'b1; // +1
-		for( int ii = 0; ii < 16; ii++ ) begin
-			{ inc_carry[ii+1], inc_sum[4*ii+3-:4] } = ( test_upper[4*ii+3-:4] == 4'h9 ) ? { 1'b1, 4'h0 } : // wrap to zero
-                                                          { 1'b0, ( test_upper[4*ii+3-:4] + {3'b0,inc_carry[ii]} ) } ;
-		end
-	end // always
+	bcd_inc32 i_bcd_inc ( .in( test_upper ), .out( inc_sum ) );
 
-	// bcd_adder of trial and sum_part1;
-	logic [16:0] bcd_carry;
+	// BCD adder of trial + sum_part1;
 	logic [63:0] bcd_sum;
-	always_comb begin
-		bcd_carry[0] = 1'b0;
-		for( int ii = 0; ii < 16; ii++ ) begin
-			{ bcd_carry[ii+1], bcd_sum[4*ii+3-:4] } = ({1'b0,trial[4*ii+3-:4]}+{1'b0,sum_part1[4*ii+3-:4]}+{4'b0,bcd_carry[ii]}>=5'd10) ?
-						          { 1'b1, ({1'b0,trial[4*ii+3-:4]}+{1'b0,sum_part1[4*ii+3-:4]}+{4'b0,bcd_carry[ii]} -5'd10) } :
-                                                          { 1'b0, ({1'b0,trial[4*ii+3-:4]}+{1'b0,sum_part1[4*ii+3-:4]}+{4'b0,bcd_carry[ii]}       ) } ;
-		end
-	end // always
+	bcd_add64 i_bcd_add( .ina( trial ), .inb( sum_part1 ), .sum( bcd_sum ));
 
 	// Sum register / cleared by init
 	logic [63:0] sum_part1; // BCD sum of invalid IDs
 	always_ff @(posedge clk_i) begin
 		if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
 			sum_part1 <= 0;
-		end else if( tick[49] && in_range ) begin
+		end else if( valid  && in_range ) begin
 			sum_part1 <= bcd_sum;
 		end else begin
 			sum_part1 <= sum_part1;
 		end
-	end;
-
+	end
 endmodule
 
+module bcd_inc32 (
+	input logic [7:0][3:0] in,
+	output logic [7:0][3:0] out
+	);
+	logic [8:0] c;
+	always_comb begin // should be a loop, but ... verilator?
+		c[0] = 1;
+		out[0] = (in[0]==4'h9&&c[0])?4'h0:in[0]+c[0]; c[1]=(in[0]==4'h9&&c[0])?1'b1:1'b0;
+		out[1] = (in[1]==4'h9&&c[1])?4'h0:in[1]+c[1]; c[2]=(in[1]==4'h9&&c[1])?1'b1:1'b0;
+		out[2] = (in[2]==4'h9&&c[2])?4'h0:in[2]+c[2]; c[3]=(in[2]==4'h9&&c[2])?1'b1:1'b0;
+		out[3] = (in[3]==4'h9&&c[3])?4'h0:in[3]+c[3]; c[4]=(in[3]==4'h9&&c[3])?1'b1:1'b0;
+		out[4] = (in[4]==4'h9&&c[4])?4'h0:in[4]+c[4]; c[5]=(in[4]==4'h9&&c[4])?1'b1:1'b0;
+		out[5] = (in[5]==4'h9&&c[5])?4'h0:in[5]+c[5]; c[6]=(in[5]==4'h9&&c[5])?1'b1:1'b0;
+		out[6] = (in[6]==4'h9&&c[6])?4'h0:in[6]+c[6]; c[7]=(in[6]==4'h9&&c[6])?1'b1:1'b0;
+		out[7] = (in[7]==4'h9&&c[7])?4'h0:in[7]+c[7]; 
+	end
+endmodule
+
+module bcd_add64 (
+	input logic [15:0][3:0] ina,
+	input logic [15:0][3:0] inb,
+	output logic [15:0][3:0] sum
+	);
+	logic [16:0] c;
+	always_comb begin // should be a loop, but ...
+		c[0] = 0;
+		for( int ii = 0; ii < 16; ii++ ) begin
+		sum[ii] = ( {1'b0,ina[ii]} + {1'b0,inb[ii]} + {4'b0000,c[ii]} > 5'd9  ) ? 
+ 			  ( {1'b0,ina[ii]} + {1'b0,inb[ii]} + {4'b0000,c[ii]} - 5'd10 ) :
+ 			  ( {1'b0,ina[ii]} + {1'b0,inb[ii]} + {4'b0000,c[ii]}         ) ;
+		c[ii+1]=  ( {1'b0,ina[ii]} + {1'b0,inb[ii]} + {4'b0000,c[ii]} > 5'd9  ) ? 1'b1 : 1'b0;
+		end
+	end
+endmodule
