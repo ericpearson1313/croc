@@ -215,7 +215,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 		end else if ( lower_digits < upper_digits && !lower_digits[0] ) begin // lower even, upper odd
 			// set upper to 99_99
 			for( int ii = 15; ii >= 0; ii-- ) begin
-				adjust_upper[ii*4+3-:4] = ( ii <= lower_digits ) ? 4'h9 : 4'h0;
+				adjust_upper[ii*4+3-:4] = ( ii < lower_digits ) ? 4'h9 : 4'h0;
 			end
 			adjust_lower = lower_reg;
 		end else if ( lower_digits == upper_digits && !lower_digits[0] ) begin // lower=upper, both  even
