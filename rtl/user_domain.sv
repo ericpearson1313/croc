@@ -116,7 +116,7 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
   );
 
   // ----------------------------------------------------------------------------------------------
-  // AOC Day 1 Hardware
+  // AOC Day 2 Hardware
   // ----------------------------------------------------------------------------------------------
   
   // get user OBI subordinate register buss (mapped to 0x2000_0000
@@ -180,14 +180,108 @@ module user_domain import user_pkg::*; import croc_pkg::*; #(
 	// Day 2 Puzzle logic
 	//////////////////////////
 
+	// Examine the registers to determine number of BCD digits in lower and upper (assume equal or +1 for upper)
+	logic [15:0] uflag,lflag; // presence of non zero digit
+	logic [4:0] upper_digits, lower_digits, digits;
+	always_comb begin
+		for( int ii = 0; ii < 16; ii++ ) begin
+			uflag[ii] = |upper_reg[ii*4-:4];
+			lflag[ii] = |lower_reg[ii*4-:4];
+		end
+		upper_digits = ( uflag[15] ) ? 5'd16 : ( uflag[14] ) ? 5'd15 : ( uflag[13] ) ? 5'd14 : ( uflag[12] ) ? 5'd13 :
+                               ( uflag[11] ) ? 5'd12 : ( uflag[10] ) ? 5'd11 : ( uflag[ 9] ) ? 5'd10 : ( uflag[ 8] ) ? 5'd9  :
+                               ( uflag[ 7] ) ? 5'd8  : ( uflag[ 6] ) ? 5'd7  : ( uflag[ 5] ) ? 5'd6  : ( uflag[ 4] ) ? 5'd5  :
+                               ( uflag[ 3] ) ? 5'd4  : ( uflag[ 2] ) ? 5'd3  : ( uflag[ 1] ) ? 5'd2  : 5'd0;
+		lower_digits = ( lflag[15] ) ? 5'd16 : ( lflag[14] ) ? 5'd15 : ( lflag[13] ) ? 5'd14 : ( lflag[12] ) ? 5'd13 :
+                               ( lflag[11] ) ? 5'd12 : ( lflag[10] ) ? 5'd11 : ( lflag[ 9] ) ? 5'd10 : ( lflag[ 8] ) ? 5'd9  :
+                               ( lflag[ 7] ) ? 5'd8  : ( lflag[ 6] ) ? 5'd7  : ( lflag[ 5] ) ? 5'd6  : ( lflag[ 4] ) ? 5'd5  :
+                               ( lflag[ 3] ) ? 5'd4  : ( lflag[ 2] ) ? 5'd3  : ( lflag[ 1] ) ? 5'd2  :  5'd0;
+		digits <= (!upper_digits[0] && !lower_digits[0]) ?  upper_digits : // E-E
+		          ( upper_digits[0] && !lower_digits[0]) ?  lower_digits : // O-E
+		          (!upper_digits[0] &&  lower_digits[0]) ?  upper_digits : // E-O
+								    5'h0; // O-O no answer
+	end // always
+	
+	// Assert (part1?) upper_digits == lower_digits || upper_digits == lower_digits + 1
+
+	// Create adjusted upper and lower, occurs when upper_digits > lower_digits
+	logic [63:0] adjust_upper;
+	logic [63:0] adjust_lower;
+	always_comb begin
+		if( lower_digits < upper_digits && lower_digits[0] ) begin // lower odd, upper even
+			// increase lower unit it becomes even in length
+			adjust_upper = upper_reg;
+			adjust_lower = 4'h1 << { lower_digits << 2 }; // create 10_00_00 if lower length was 5
+		end else if ( lower_digits < upper_digits && !lower_digits[0] ) begin // lower even, upper odd
+			// set upper to 99_99
+			for( int ii = 15; ii >= 0; ii-- ) begin
+				adjust_upper[ii*4+3-:4] = ( ii <= lower_digits ) ? 4'h9 : 4'h0;
+			end
+			adjust_lower = lower_reg;
+		end else begin // dont touch
+			adjust_upper = upper_reg;
+			adjust_lower = lower_reg;
+		end
+	end // always
+
+	// Snapshot registers 
+
+	logic [63:0] hold_upper;
+	logic [63:0] hold_lower;
+	logic [31:0] test_upper;  // we will use this as a bcd counter, starting at lower upper-half
+	logic [5:0] hold_digits;
+	always_ff @(posedge clk_i) begin
+		if( tick[0] ) begin
+			hold_upper <= adjust_upper;
+			hold_lower <= adjust_lower;
+			hold_digits <= digits;
+			test_upper <= adjust_lower >> ( digits << 1 ); // shift down to right justify counter
+		end else begin
+			hold_upper <= hold_upper;
+			hold_lower <= hold_lower;
+			hold_digits <= hold_digits;
+			test_upper <= ( test_upper < hold_upper ) ? inc_sum : test_upper; // auto inc until limit reached
+		end
+	end
+	
+	// create a trial candiate, and test if in range
+	logic [63:0] trial;
+	logic in_range;
+	assign trial = test_upper | test_upper << ( hold_digits << 1 ); // test sequence repeated
+	assign in_range = ( trial <= hold_upper && trial >= hold_lower ) ? 1'b1 : 1'b0; // comparison of bcd works here
+
+	// BCD +1 adder, to increment test_upper[31:0]
+	logic [8:0] inc_carry;
+	logic [31:0] inc_sum;
+	always_comb begin
+		inc_carry[0] = 1'b1; // +1
+		for( int ii = 0; ii < 16; ii++ ) begin
+			{ inc_carry[ii+1], inc_sum[4*ii+3-:4] } = ( test_upper[4*ii+3-:4] == 4'h9 ) ? { 1'b1, 4'h0 } : // wrap to zero
+                                                          { 1'b0, ( test_upper[4*ii+3-:4] + {3'b0,inc_carry[ii]} ) } ;
+		end
+	end // always
+
+	// bcd_adder of trial and sum_part1;
+	logic [16:0] bcd_carry;
+	logic [63:0] bcd_sum;
+	always_comb begin
+		bcd_carry[0] = 1'b0;
+		for( int ii = 0; ii < 16; ii++ ) begin
+			{ bcd_carry[ii+1], bcd_sum[4*ii+3-:4] } = ({1'b0,trial[4*ii+3-:4]}+{1'b0,sum_part1[4*ii+3-:4]}+{4'b0,bcd_carry[ii]}>=5'd10) ?
+						          { 1'b1, ({1'b0,trial[4*ii+3-:4]}+{1'b0,sum_part1[4*ii+3-:4]}+{4'b0,bcd_carry[ii]} -5'd10) } :
+                                                          { 1'b0, ({1'b0,trial[4*ii+3-:4]}+{1'b0,sum_part1[4*ii+3-:4]}+{4'b0,bcd_carry[ii]}       ) } ;
+		end
+	end // always
+
 	// Sum register / cleared by init
 	logic [63:0] sum_part1; // BCD sum of invalid IDs
 	always_ff @(posedge clk_i) begin
-	
 		if(  sbr_rsp_o.gnt & sbr_req_i.req & sbr_req_i.a.we & sbr_req_i.a.addr[11:2]==0 ) begin // write reg 0 to clear sum
 			sum_part1 <= 0;
-		end else if( tick[49] ) begin
-			sum_part1 <= sum_part1 + 1; //tmp
+		end else if( tick[49] && in_range ) begin
+			sum_part1 <= bcd_sum;
+		end else begin
+			sum_part1 <= sum_part1;
 		end
 	end;
 

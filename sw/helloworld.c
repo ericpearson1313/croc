@@ -20,7 +20,7 @@ int main() {
     gpio_enable(0xFF); 
     gpio_write(0x00);
     uart_init(); // setup the uart peripheral
-    printf("Hello Advent of Code 2025, Day 2!\n");
+    printf("\e[32mHello Advent of Code 2025, Day 2!\e[0m\n");
     uart_write_flush();
 
     // Handshake bytes in via serial
@@ -46,14 +46,14 @@ int main() {
           case 0x0A : // write upper range as 2 words, triggers error finding and accumulation
 		hw_reg[3] = (unsigned)(bcd&0xFFFFFFFF);
 		hw_reg[4] = (unsigned)(bcd>>32);
-		printf("Upper range msb 0x%x lsb 0x%x\n", hw_reg[2], hw_reg[1] );
+		printf("Upper range msb 0x%x lsb 0x%x\n", hw_reg[4], hw_reg[3] );
 		bcd = 0; 
 		count++;
 		break;
 	  case '-' : // write lower range as 2 words
 		hw_reg[1] = (unsigned)(bcd&0xFFFFFFFF);
 		hw_reg[2] = (unsigned)(bcd>>32);
-		printf("Lower range msb 0x%x lsb 0x%x\n", hw_reg[4], hw_reg[3] );
+		printf("Lower range msb 0x%x lsb 0x%x\n", hw_reg[2], hw_reg[1] );
 		bcd=0; 
 		break;
 	  case '0' : case '1' : case '2' : case '3' : case '4' : case '5' : case '6' : case '7' : case '8' : case '9' :
