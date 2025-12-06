@@ -1,5 +1,6 @@
+# AoC 2025 Day-6 & Day-5 puzzle with verilog solution generation.
 
-AoC 2025 Day-5 puzzle solution generation.
+## Day 5 - Part 1
 
 A plain system verilog testbench running a synthesizable verilog module.
 Only the following files are used:
@@ -34,5 +35,43 @@ when run the puzzle sum is computed based on the puzzle data. The testbench read
 
 Done for now .... i'll need to think about how to solve part 2. Maybe later
 
-The distributed croc readme follows. I used thsi repo because it had verilator.
+## Day 6 - Part 1 & 2
+
+A plain system verilog testbench running a synthesizable verilog module. 
+Only the following files are used:
+
+    aoc_day6.sv - contains both testbench and compute module
+	day6_puzzle.txt - puzzle text
+	day6_run.sh  - everything to run the verilator simulation
+
+The synthsizable verilog accept a wire rate byte stream of the puzzle text. It uses 4 memoryies to store each row of digits.
+During the final operator row it reads the digit rows in parallel. It searches for the columns of blanks as sepators
+converts the text to 4x4 arreay of BCD digits (horizontal for part1 and vertical for part 2). It then LSB justifes the
+digits and converts them to integers and calculates the add and mult results. Based on the operator eith the add result or the multiplier result is added to the accumulator.
+
+    module day6_parts (
+            input logic clk,
+            input logic reset,
+            input logic part2,
+            input logic [7:0] data,
+            input logic valid, // Valid charcode
+            output logic [63:0] sum // puzzle sum
+        );
+
+Two of these same blocks are instantiated to sove puzzzle 1 and 2 together.
+
+
+    ...
+    - V e r i l a t i o n   R e p o r t: Verilator 5.040 2025-08-30 rev v5.040
+    - Verilator: Built from 0.000 MB sources in 0 modules, into 0.000 MB in 0 C++ files needing 0.000 MB
+    - Verilator: Walltime 0.010 s (elab=0.000, cvt=0.000, bld=0.009); cpu 0.001 s on 4 threads; alloced 29.266 MB
+    Reset done
+    Day 6 Part 1 sum = 0x000005c4ee0cd3f4  (       6343365546996)
+    Day 6 Part 2 sum = 0x00000a2102ba33c8  (      11136895955912)
+    - aoc_day6.sv:88: Verilog $finish
+
+
+
+
+
 
