@@ -71,7 +71,7 @@ module day9_tb();
 					ycoord = value;
 					value  = 0;
 					wvalid = 1;
-					$display("%d,%d", xcoord,ycoord);
+					//$display("%d,%d", xcoord,ycoord);
 				end
 				endcase
                         	c = $fgetc(file);
@@ -123,4 +123,84 @@ module aoc_day9 (
 	assign done = 1;
 	always_ff @(posedge clk)
 		maximum <= ( reset ) ? 0 : ( wvalid ) ? maximum + 1 : maximum;
+
+	// Lenght
+	logic [9:0] length;
+	always_ff @(posedge clk)
+		length <= ( reset ) ? 0 : ( wvalid ) ? length + 1 : length;
+			
+
+	// Write to memories as data arrives (dual read)
+	logic [17:0] xa_ram [0:1023] ;
+	logic [17:0] xb_ram [0:1023] ;
+	logic [17:0] ya_ram [0:1023] ;
+	logic [17:0] yb_ram [0:1023] ;
+	always_ff @(posedge clk) begin
+		if( wvalid ) begin
+			xa_ram[length] <= xcoord;
+			xb_ram[length] <= xcoord;
+			ya_ram[length] <= ycoord;
+			yb_ram[length] <= ycoord;
+		end
+	end
+
+	// run_flag
+	logic run;
+	logic wvalid_d;
+	always_ff @(posedge clk) begin
+		wvalid_d <= wvalid;
+		run <= ( reset ) ? 0 : ( !wvalid & wvalid_d ) ? 1 : ( last ) ? 0 : run;
+	end
+
+	// read address generationA
+	logic [9:0] counta, countb;
+	always_ff @(posedge clk) begin
+		if( run ) begin
+			counta <= ( reset ) ? 0 : ( run && countb == length - 1 && counta == length - 2 ) ? 0 :
+                                                  ( run && countb == length - 1 ) ? counta + 1 : counta;
+			countb <= ( reset ) ? 0 : ( run && countb == length - 1 ) ? counta + 1 : ( run ) ?  countb + 1 : counta;
+		end
+	end
+
+	// Last logic
+	logic last;
+	assign last = ( run && countb == length - 1 && counta == length - 2 ) ? 1'b1 : 1'b0;
+
+	// Done flag 
+	always_ff @(posedge clk) 
+		done <= ( reset ) ? 0 : ( last ) ? 1 : done;
+
+	// Read the rams at both addresses A and B 
+	logic [17:0] xa, xb, ya, yb;
+	always_ff @(posedge clk) begin
+		xa <= xa_ram[counta];
+		xb <= xb_ram[countb];
+		ya <= ya_ram[counta];
+		yb <= yb_ram[countb];
+	end
+
+	// Absoute differences + 1;
+	logic [17:0] absdx, absdy;
+	logic [17:0] width, height;
+	assign absdx = ( xa > xb ) ? xa - xb : xb - xa;
+	assign absdy = ( ya > yb ) ? ya - yb : yb - ya;
+
+	always_ff @(posedge clk) begin
+		width <= absdx + 1;
+		height<= absdy + 1;
+	end
+
+	// Area Calc
+	logic [35:0] area;
+	always_ff @(posedge clk) 
+		area <= width * height;
+
+	// delay run to get acc flag
+	logic acc_flag[2:0];
+	always_ff @(posedge clk) 
+		acc_flag[2:0] <= { acc_flag[1:0], run };
+	
+	// Maximum Accumulator
+	always_ff @(posedge clk) 
+		maximum <= ( reset ) ? 0 : ( acc_flag[2] && area > maximum ) ? area : maximum;
 endmodule
