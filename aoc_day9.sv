@@ -22,16 +22,17 @@ module day9_tb();
                 end
                 reset = 0;
                 $display("Reset done");
-                for( int ii = 0; ii < 50000; ii++ ) begin
+                for( int ii = 0; ii < 500000; ii++ ) begin
                         @(negedge clk);
                 end
+                $display("halted dur to clock limit");
                 $finish();
         end
 
 	// turn on waveform dump
 	initial begin
         	$timeformat(-9, 0, "ns", 12); // 1: scale (ns=-9), 2: decimals, 3: suffix, 4: print-field width
-        	$dumpfile("day6.fst");
+        	$dumpfile("day9.fst");
         	$dumpvars(1,i_dut_part1);
         end
 	
@@ -67,11 +68,11 @@ module day9_tb();
 					value  = 0;
 				end
 				8'h0a : begin
-					@(negedge clk);
 					ycoord = value;
 					value  = 0;
 					wvalid = 1;
 					//$display("%d,%d", xcoord,ycoord);
+					@(negedge clk);
 				end
 				endcase
                         	c = $fgetc(file);
@@ -81,8 +82,9 @@ module day9_tb();
 			$finish();
         	end
 		$fclose( file );
+		wvalid = 0;
 		@(negedge clk);
-		value = 0;
+		@(negedge clk);
 	
 		// Wait for processing to be done 100K cycles
 		while( !done ) @(negedge clk);
@@ -95,7 +97,7 @@ module day9_tb();
 		$finish();
 	end // initial
 
-	// Instantiate day 9 synthesizable verilog
+	// Instantiate day 9 synthesizable verilog 
 	aoc_day9 i_day9 (
 		.clk	( clk ),
 		.reset	( reset ),
@@ -120,9 +122,9 @@ module aoc_day9 (
 	output logic [35:0] maximum
 	);
 	// black box simple response
-	assign done = 1;
-	always_ff @(posedge clk)
-		maximum <= ( reset ) ? 0 : ( wvalid ) ? maximum + 1 : maximum;
+	//assign done = 1;
+	//always_ff @(posedge clk)
+	//	maximum <= ( reset ) ? 0 : ( wvalid ) ? maximum + 1 : maximum;
 
 	// Lenght
 	logic [9:0] length;
@@ -153,13 +155,20 @@ module aoc_day9 (
 	end
 
 	// read address generationA
-	logic [9:0] counta, countb;
+	logic [9:0] counta;
+	logic [9:0] countb;
 	always_ff @(posedge clk) begin
-		if( run ) begin
-			counta <= ( reset ) ? 0 : ( run && countb == length - 1 && counta == length - 2 ) ? 0 :
-                                                  ( run && countb == length - 1 ) ? counta + 1 : counta;
-			countb <= ( reset ) ? 0 : ( run && countb == length - 1 ) ? counta + 1 : ( run ) ?  countb + 1 : counta;
-		end
+		counta <= ( reset                                               ) ?          0 : 
+                          ( run && countb == length - 1 && counta == length - 2 ) ?          0 :
+                          ( run && countb == length - 1                         ) ? counta + 1 : 
+                                                                                    counta     ;
+	end
+	always_ff @(posedge clk) begin
+		countb <= ( reset                                               ) ?          1 : 
+                          ( run && countb == length - 1 && counta == length - 2 ) ?          0 :
+                          ( run && countb == length - 1                         ) ? counta + 2 : 
+			  ( run                                                 ) ? countb + 1 : 
+                                                                                    countb     ;
 	end
 
 	// Last logic
