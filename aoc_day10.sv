@@ -1,5 +1,5 @@
 
-module day9_tb();
+module day10_tb();
 
 	// Let there be clock and reset
         logic clk;
@@ -22,7 +22,7 @@ module day9_tb();
                 end
                 reset = 0;
                 $display("Reset done");
-                for( int ii = 0; ii < 500000; ii++ ) begin
+                for( int ii = 0; ii < 2000000; ii++ ) begin
                         @(negedge clk);
                 end
                 $display("halted dur to clock limit");
@@ -32,48 +32,111 @@ module day9_tb();
 	// turn on waveform dump
 	initial begin
         	$timeformat(-9, 0, "ns", 12); // 1: scale (ns=-9), 2: decimals, 3: suffix, 4: print-field width
-        	$dumpfile("day9.fst");
+        	$dumpfile("day10.fst");
         	$dumpvars(1,i_dut_part1);
         end
 	
 
 	// Read day9_puzzle.txt and calculate answer (behavioral, 
-	logic 	wvalid;
-	logic 	[17:0] xcoord, ycoord;
-	logic   [35:0] maximum;
-	logic   done;
+	// DUT Connections
+	logic   [9:0] wdata;
+	logic 	      wvalid;
+	logic         wlast; // starts the processing
+	logic   [2:0] wuser; // { joltage, buttons, target }
+	logic 	      wready; // done flag
+	logic	[31:0] sum1; // part 1 sum 
+	logic   [63:0] sum2; // part 2 sum (optimistic!)
+
     	integer file, c;
-	integer value;
+	integer vidx;
+	integer phase;
     	initial begin
+		// clear dut IO
+		wdata = 0;
 		wvalid = 0;
-		xcoord = 0;
-		ycoord = 0;
+		wlast = 0;
+		wuser = 0;
+
 		// Wait for reset
 		@(negedge clk);
 		while( reset ) @(negedge clk);
 		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
 
 		// Read file and feed the xy coordinates with valid
-        	file = $fopen("day9_puzzle.txt", "r");
+        	file = $fopen("day10_short_puzzle.txt", "r");
         	if( file ) begin
-			value = 0;
                 	c = $fgetc(file);
                 	while( c != -1 ) begin // until eof
+				//$display("char %c", c );
 				case( c ) 
-				"0","1","2","3","4","5","6","7","8","9" : begin
-					value = value * 10 + c - "0";
-				end
-				"," : begin
-					xcoord = value;
-					value  = 0;
-				end
+				"[" : 	begin
+						// on start of new puzzle line wait for unit to be ready,
+						// up to 8K cycle wait 
+						wvalid = 0;
+						while( !wready )
+							@(negedge clk);
+						wuser = 3'b001; // target phase
+						wdata = 0;
+						vidx = 1;
+				      	end
+				"." : 	begin
+						wdata = wdata;
+						vidx = vidx << 1;
+				      	end
+				"#" : 	begin
+						wdata = wdata | vidx;
+						vidx = vidx << 1;
+				      	end
+				"]" : 	begin
+						wvalid = 1;
+						$display( "W Target %d %d %d",  wvalid, wuser, wdata );
+						@(negedge clk);
+				      	end
+				"(" : 	begin
+						wuser = 3'b010; // button phase
+						wdata = 0;
+					end
+
+				"0","1","2","3","4","5","6","7","8","9" : 
+					begin
+						if( wuser == 3'b010 ) begin // button, digit is bit pos
+							wdata = wdata | (1<<(c-"0"));
+						end else if( wuser == 3'b100 ) begin // joltage is base 10
+							wdata = wdata * 10 + c - "0";
+						end
+					end
+				"," : 	begin	
+						if( wuser == 3'b010 ) begin
+							// ignore
+						end else if( wuser == 3'b100) begin
+							wvalid = 1;
+							$display( "W Joltage %d %d %d",  wvalid, wuser, wdata );
+							@(negedge clk);
+							wdata = 0;
+						end
+					end
+				")" : 	begin
+						wvalid = 1;
+						$display( "W Button %d %d %d",  wvalid, wuser, wdata );
+						@(negedge clk);
+				      	end
+				"{" : 	begin
+						wuser = 3'b100; // button phase
+						wdata = 0;
+					end
+				"}" : 	begin
+						wvalid = 1;
+						wlast = 1;
+						$display( "W button %d %d %d",  wvalid, wuser, wdata );
+						@(negedge clk);
+					end
 				8'h0a : begin
-					ycoord = value;
-					value  = 0;
-					wvalid = 1;
-					//$display("%d,%d", xcoord,ycoord);
-					@(negedge clk);
-				end
+						wdata = 0;
+						wvalid = 0;
+						wlast = 0;
+						wuser = 0;
+						$display( "EOL");
+					end
 				endcase
                         	c = $fgetc(file);
         	        end
@@ -83,49 +146,58 @@ module day9_tb();
         	end
 		$fclose( file );
 		wvalid = 0;
+		wlast = 0;
 		@(negedge clk);
 		@(negedge clk);
 	
 		// Wait for processing to be done 100K cycles
-		while( !done ) @(negedge clk);
+		while( !wready ) @(negedge clk);
 
 		// Report result
-               	$display("Day 9 Part 1 Max Area = %d", maximum );
+               	$display("Day 10 Part 1 sum = %d", sum1);
+               	$display("Day 10 Part 2 ??? = %d", sum2);
 		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
 
 		// Finish
 		$finish();
 	end // initial
 
-	// Instantiate day 9 synthesizable verilog 
-	aoc_day9 i_day9 (
+	// Instantiate day 10 synthesizable verilog 
+	aoc_day10 i_day10 (
 		.clk	( clk ),
 		.reset	( reset ),
 		.wvalid	( wvalid ),
-		.xcoord	( xcoord ),
-		.ycoord ( ycoord ),
-		.done   ( done ),
-		.maximum( maximum )
+		.wready	( wready ),
+		.wdata 	( wdata  ),
+		.wuser 	( wuser  ),
+		.wlast 	( wlast  ),
+		.sum1   ( sum1 ),
+		.sum2   ( sum2 )
 	);
 endmodule
 
 
 
 
-module aoc_day9 (
+module aoc_day10 (
 	input logic clk,
 	input logic reset,
 	input logic wvalid,
-	input logic [17:0] xcoord,
-	input logic [17:0] ycoord,
-	output logic done,
-	output logic [35:0] maximum
+	input logic wlast,
+	input logic [2:0] wuser,
+	input logic [9:0] wdata,
+	output logic wready,
+	output logic [31:0] sum1,
+	output logic [63:0] sum2
 	);
-	// black box simple response
-	//assign done = 1;
-	//always_ff @(posedge clk)
-	//	maximum <= ( reset ) ? 0 : ( wvalid ) ? maximum + 1 : maximum;
+	//black box simple response
+	assign wready = 1;
+	always_ff @(posedge clk) begin
+		sum1 <= ( reset ) ? 0 : ( wvalid ) ? sum1 + 1 : sum1;
+		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
+	end
 
+/*
 	// Lenght
 	logic [9:0] length;
 	always_ff @(posedge clk)
@@ -212,4 +284,5 @@ module aoc_day9 (
 	// Maximum Accumulator
 	always_ff @(posedge clk) 
 		maximum <= ( reset ) ? 0 : ( acc_flag[2] && area > maximum ) ? area : maximum;
+*/
 endmodule
