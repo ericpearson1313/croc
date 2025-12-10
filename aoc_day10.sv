@@ -33,13 +33,13 @@ module day10_tb();
 	initial begin
         	$timeformat(-9, 0, "ns", 12); // 1: scale (ns=-9), 2: decimals, 3: suffix, 4: print-field width
         	$dumpfile("day10.fst");
-        	$dumpvars(1,i_dut_part1);
+        	$dumpvars(1,i_day10);
         end
 	
 
 	// Read day9_puzzle.txt and calculate answer (behavioral, 
 	// DUT Connections
-	logic   [9:0] wdata;
+	logic   [15:0] wdata;
 	logic 	      wvalid;
 	logic         wlast; // starts the processing
 	logic   [2:0] wuser; // { joltage, buttons, target }
@@ -49,7 +49,7 @@ module day10_tb();
 
     	integer file, c;
 	integer vidx;
-	integer phase;
+	integer waitcount;
     	initial begin
 		// clear dut IO
 		wdata = 0;
@@ -63,7 +63,7 @@ module day10_tb();
 		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
 
 		// Read file and feed the xy coordinates with valid
-        	file = $fopen("day10_short_puzzle.txt", "r");
+        	file = $fopen("day10_puzzle.txt", "r");
         	if( file ) begin
                 	c = $fgetc(file);
                 	while( c != -1 ) begin // until eof
@@ -73,8 +73,12 @@ module day10_tb();
 						// on start of new puzzle line wait for unit to be ready,
 						// up to 8K cycle wait 
 						wvalid = 0;
-						while( !wready )
+						waitcount = 0;
+						while( !wready ) begin
 							@(negedge clk);
+							waitcount = waitcount+1;
+						end
+						$display( "Wait wready cycles = %d",  waitcount );
 						wuser = 3'b001; // target phase
 						wdata = 0;
 						vidx = 1;
@@ -89,7 +93,7 @@ module day10_tb();
 				      	end
 				"]" : 	begin
 						wvalid = 1;
-						$display( "W Target %d %d %d",  wvalid, wuser, wdata );
+						$display( "W Target %d %d %d %b",  wvalid, wuser, wdata, wdata[9:0] );
 						@(negedge clk);
 				      	end
 				"(" : 	begin
@@ -117,7 +121,7 @@ module day10_tb();
 					end
 				")" : 	begin
 						wvalid = 1;
-						$display( "W Button %d %d %d",  wvalid, wuser, wdata );
+						$display( "W Button %d %d %d %b",  wvalid, wuser, wdata, wdata[9:0] );
 						@(negedge clk);
 				      	end
 				"{" : 	begin
@@ -127,7 +131,7 @@ module day10_tb();
 				"}" : 	begin
 						wvalid = 1;
 						wlast = 1;
-						$display( "W button %d %d %d",  wvalid, wuser, wdata );
+						$display( "W Joltage %d %d %d",  wvalid, wuser, wdata );
 						@(negedge clk);
 					end
 				8'h0a : begin
@@ -145,15 +149,17 @@ module day10_tb();
 			$finish();
         	end
 		$fclose( file );
-		wvalid = 0;
-		wlast = 0;
-		@(negedge clk);
-		@(negedge clk);
-	
-		// Wait for processing to be done 100K cycles
-		while( !wready ) @(negedge clk);
+
+		// Wait for completion
+		waitcount = 0;
+		while( !wready ) begin
+			@(negedge clk);
+			waitcount = waitcount+1;
+		end
+		$display( "Wait wready cycles = %d",  waitcount );
 
 		// Report result
+		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
                	$display("Day 10 Part 1 sum = %d", sum1);
                	$display("Day 10 Part 2 ??? = %d", sum2);
 		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
@@ -185,104 +191,114 @@ module aoc_day10 (
 	input logic wvalid,
 	input logic wlast,
 	input logic [2:0] wuser,
-	input logic [9:0] wdata,
+	input logic [15:0] wdata,
 	output logic wready,
 	output logic [31:0] sum1,
 	output logic [63:0] sum2
 	);
 	//black box simple response
-	assign wready = 1;
-	always_ff @(posedge clk) begin
-		sum1 <= ( reset ) ? 0 : ( wvalid ) ? sum1 + 1 : sum1;
-		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
-	end
+	//assign wready = 1;
+	//always_ff @(posedge clk) begin
+	//	sum1 <= ( reset ) ? 0 : ( wvalid ) ? sum1 + 1 : sum1;
+	//	sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
+	//end
 
-/*
-	// Lenght
-	logic [9:0] length;
-	always_ff @(posedge clk)
-		length <= ( reset ) ? 0 : ( wvalid ) ? length + 1 : length;
-			
+	// Target lights for match condition
+	logic [9:0] target;
+	always @(posedge clk)
+		target <= ( reset ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
 
-	// Write to memories as data arrives (dual read)
-	logic [17:0] xa_ram [0:1023] ;
-	logic [17:0] xb_ram [0:1023] ;
-	logic [17:0] ya_ram [0:1023] ;
-	logic [17:0] yb_ram [0:1023] ;
-	always_ff @(posedge clk) begin
-		if( wvalid ) begin
-			xa_ram[length] <= xcoord;
-			xb_ram[length] <= xcoord;
-			ya_ram[length] <= ycoord;
-			yb_ram[length] <= ycoord;
-		end
-	end
+	// Button array allow 16, puzzle seems to max at 13
+	// Shift in during button writes
+	logic [15:0][9:0] button;
+	always @(posedge clk) 
+		button <= ( reset ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[14:0], wdata[9:0] } : button;
 
-	// run_flag
-	logic run;
-	logic wvalid_d;
-	always_ff @(posedge clk) begin
-		wvalid_d <= wvalid;
-		run <= ( reset ) ? 0 : ( !wvalid & wvalid_d ) ? 1 : ( last ) ? 0 : run;
-	end
-
-	// read address generationA
-	logic [9:0] counta;
-	logic [9:0] countb;
-	always_ff @(posedge clk) begin
-		counta <= ( reset                                               ) ?          0 : 
-                          ( run && countb == length - 1 && counta == length - 2 ) ?          0 :
-                          ( run && countb == length - 1                         ) ? counta + 1 : 
-                                                                                    counta     ;
-	end
-	always_ff @(posedge clk) begin
-		countb <= ( reset                                               ) ?          1 : 
-                          ( run && countb == length - 1 && counta == length - 2 ) ?          0 :
-                          ( run && countb == length - 1                         ) ? counta + 2 : 
-			  ( run                                                 ) ? countb + 1 : 
-                                                                                    countb     ;
-	end
-
-	// Last logic
-	logic last;
-	assign last = ( run && countb == length - 1 && counta == length - 2 ) ? 1'b1 : 1'b0;
-
-	// Done flag 
-	always_ff @(posedge clk) 
-		done <= ( reset ) ? 0 : ( last ) ? 1 : done;
-
-	// Read the rams at both addresses A and B 
-	logic [17:0] xa, xb, ya, yb;
-	always_ff @(posedge clk) begin
-		xa <= xa_ram[counta];
-		xb <= xb_ram[countb];
-		ya <= ya_ram[counta];
-		yb <= yb_ram[countb];
-	end
-
-	// Absoute differences + 1;
-	logic [17:0] absdx, absdy;
-	logic [17:0] width, height;
-	assign absdx = ( xa > xb ) ? xa - xb : xb - xa;
-	assign absdy = ( ya > yb ) ? ya - yb : yb - ya;
-
-	always_ff @(posedge clk) begin
-		width <= absdx + 1;
-		height<= absdy + 1;
-	end
-
-	// Area Calc
-	logic [35:0] area;
-	always_ff @(posedge clk) 
-		area <= width * height;
-
-	// delay run to get acc flag
-	logic acc_flag[2:0];
-	always_ff @(posedge clk) 
-		acc_flag[2:0] <= { acc_flag[1:0], run };
+	// Joltage shift in
+	logic [14:0][15:0] joltage;
+	always @(posedge clk) 
+		joltage <= ( reset ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[14:0], wdata[15:0] } : joltage;
 	
-	// Maximum Accumulator
-	always_ff @(posedge clk) 
-		maximum <= ( reset ) ? 0 : ( acc_flag[2] && area > maximum ) ? area : maximum;
-*/
+
+	// Counter, shifts in 1's with each button, and then count down to
+	// zero
+	logic [15:0] count;
+	always @(posedge clk) 
+		count <= ( reset ) ? 0 : 
+	                 ( ( wvalid && wready && wuser[1] ) ) ? { count[14:0], 1'b1 } :
+			 ( !wready && count!=0 ) ? count - 1 : count;
+	
+	// Wready Logic
+	always @(posedge clk) 
+		wready <= ( reset ) ? 1 : 
+			  ( wvalid && wready && wlast ) ? 0 : // drop ready while we process
+			  ( !wready && count == 0 ) ? 1 : wready;
+	
+	// Count Button presses
+	// is the sum of bits set in count
+	logic [3:0] presses;
+	assign presses = (( count[0] + count[1] ) + ( count[2] + count[3] ) + 
+		          ( count[4] + count[5] ) + ( count[6] + count[7] ))+
+		         (( count[8] + count[9] ) + ( count[10]+ count[11]) + 
+			  ( count[12]+ count[13] )+ ( count[14]+ count[15]));
+	
+	// Compute lights
+	logic [9:0] lights;
+	assign lights = ( ( !count[ 0] ) ? 0 : button[ 0] ) ^
+	                ( ( !count[ 1] ) ? 0 : button[ 1] ) ^
+	                ( ( !count[ 2] ) ? 0 : button[ 2] ) ^
+	                ( ( !count[ 3] ) ? 0 : button[ 3] ) ^
+	                ( ( !count[ 4] ) ? 0 : button[ 4] ) ^
+	                ( ( !count[ 5] ) ? 0 : button[ 5] ) ^
+	                ( ( !count[ 6] ) ? 0 : button[ 6] ) ^
+	                ( ( !count[ 7] ) ? 0 : button[ 7] ) ^
+	                ( ( !count[ 8] ) ? 0 : button[ 8] ) ^
+	                ( ( !count[ 9] ) ? 0 : button[ 9] ) ^
+	                ( ( !count[10] ) ? 0 : button[10] ) ^
+	                ( ( !count[11] ) ? 0 : button[11] ) ^
+	                ( ( !count[12] ) ? 0 : button[12] ) ^
+	                ( ( !count[13] ) ? 0 : button[13] ) ^
+	                ( ( !count[14] ) ? 0 : button[14] ) ^
+	                ( ( !count[15] ) ? 0 : button[15] ) ^
+	                ( ( !count[12] ) ? 0 : button[12] ) ;
+
+	// some monitor registers
+	logic [9:0] lights_reg;
+	logic [3:0] presses_reg;
+	logic hit;
+	always @(posedge clk) begin
+		hit <= (!wready && lights == target) ? 1'b1 : 1'b0;
+		lights_reg <= lights;
+		presses_reg <= presses;
+	end
+
+	// synopsys translate_off
+	always @(posedge clk) begin
+		if( !wready && lights == target )
+			$display( "hit count 0x%x %b", count, count );
+	end
+	// synopsys translate_on
+	
+	// maintain min presses for matche
+	logic [4:0] min_presses;
+	always @(posedge clk) 
+		min_presses <= ( wvalid && wready && wuser[0] ) ? 16 :
+			       ( !wready && lights == target && presses < min_presses ) ? presses : min_presses;
+
+       // Accululate sum1 at end of the run
+	logic wready_d;
+	always @(posedge clk) begin
+		wready_d <= wready;
+		sum1 <= ( reset ) ? 0 : 
+			( wready && !wready_d ) ? sum1 + min_presses : sum1;
+		// synopsys translate_off
+		if( wready && !wready_d ) 
+			$display("Fewest presses %d", min_presses );
+		// synopsys translate_on
+	end
+	
+	// We'll just have sum2 count machines for now
+	always @(posedge clk) 
+		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
+
 endmodule
