@@ -205,31 +205,31 @@ module aoc_day10 (
 
 	// Target lights for match condition
 	logic [9:0] target;
-	always @(posedge clk)
+	always_ff @(posedge clk)
 		target <= ( reset ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
 
 	// Button array allow 16, puzzle seems to max at 13
 	// Shift in during button writes
 	logic [15:0][9:0] button;
-	always @(posedge clk) 
+	always_ff @(posedge clk) 
 		button <= ( reset ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[14:0], wdata[9:0] } : button;
 
 	// Joltage shift in
 	logic [14:0][15:0] joltage;
-	always @(posedge clk) 
+	always_ff @(posedge clk) 
 		joltage <= ( reset ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[14:0], wdata[15:0] } : joltage;
 	
 
 	// Counter, shifts in 1's with each button, and then count down to
 	// zero
 	logic [15:0] count;
-	always @(posedge clk) 
+	always_ff @(posedge clk) 
 		count <= ( reset ) ? 0 : 
 	                 ( ( wvalid && wready && wuser[1] ) ) ? { count[14:0], 1'b1 } :
 			 ( !wready && count!=0 ) ? count - 1 : count;
 	
 	// Wready Logic
-	always @(posedge clk) 
+	always_ff @(posedge clk) 
 		wready <= ( reset ) ? 1 : 
 			  ( wvalid && wready && wlast ) ? 0 : // drop ready while we process
 			  ( !wready && count == 0 ) ? 1 : wready;
@@ -259,46 +259,43 @@ module aoc_day10 (
 	                ( ( !count[12] ) ? 0 : button[12] ) ^
 	                ( ( !count[13] ) ? 0 : button[13] ) ^
 	                ( ( !count[14] ) ? 0 : button[14] ) ^
-	                ( ( !count[15] ) ? 0 : button[15] ) ^
-	                ( ( !count[12] ) ? 0 : button[12] ) ;
+	                ( ( !count[15] ) ? 0 : button[15] ) ;
 
 	// some monitor registers
 	logic [9:0] lights_reg;
 	logic [3:0] presses_reg;
 	logic hit;
-	always @(posedge clk) begin
+	always_ff @(posedge clk) begin
 		hit <= (!wready && lights == target) ? 1'b1 : 1'b0;
 		lights_reg <= lights;
 		presses_reg <= presses;
 	end
 
-	// synopsys translate_off
-	always @(posedge clk) begin
+	// debug to remove
+	always_ff @(posedge clk) begin
 		if( !wready && lights == target )
 			$display( "hit count 0x%x %b", count, count );
 	end
-	// synopsys translate_on
 	
 	// maintain min presses for matche
 	logic [4:0] min_presses;
-	always @(posedge clk) 
+	always_ff @(posedge clk) 
 		min_presses <= ( wvalid && wready && wuser[0] ) ? 16 :
 			       ( !wready && lights == target && presses < min_presses ) ? presses : min_presses;
 
        // Accululate sum1 at end of the run
 	logic wready_d;
-	always @(posedge clk) begin
+	always_ff @(posedge clk) begin
 		wready_d <= wready;
 		sum1 <= ( reset ) ? 0 : 
 			( wready && !wready_d ) ? sum1 + min_presses : sum1;
-		// synopsys translate_off
+		// debug to remove
 		if( wready && !wready_d ) 
 			$display("Fewest presses %d", min_presses );
-		// synopsys translate_on
 	end
 	
 	// We'll just have sum2 count machines for now
-	always @(posedge clk) 
+	always_ff @(posedge clk) 
 		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
 
 endmodule
