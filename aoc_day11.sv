@@ -1,7 +1,7 @@
 
 module day11_tb();
 
-	// Let there be clock and reset
+	// Let there be clock 
         logic clk;
         logic reset;
 
@@ -14,21 +14,6 @@ module day11_tb();
                 end
         end
 
-        // create reset
-        initial begin
-                reset = 1;
-                for( int ii = 0; ii < 10; ii++ ) begin
-                        @(negedge clk);
-                end
-                reset = 0;
-                $display("Reset done");
-                for( int ii = 0; ii < 2000000; ii++ ) begin
-                        @(negedge clk);
-                end
-                $display("halted dur to clock limit");
-                $finish();
-        end
-
 	// turn on waveform dump
 	initial begin
         	$timeformat(-9, 0, "ns", 12); // 1: scale (ns=-9), 2: decimals, 3: suffix, 4: print-field width
@@ -38,22 +23,42 @@ module day11_tb();
 	
 
 	// DUT Connections
-	logic [63:0] svr, you, out;
+	logic [63:0] svr, you, out, fft, dac, fft_ofs, dac_ofs;
+	logic [63:0] out_you, out_fft, out_dac, fft_dac, fft_svr, dac_fft, dac_svr;
 
     	initial begin
-		// clear dut IO
-		out = 0;
-		// Wait for reset
+		out     = 0;
+		fft_ofs = 0;
+		dac_ofs = 0;
 		@(negedge clk);
-		while( reset ) @(negedge clk);
-		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
-
-
-		out = 1;
-		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
-		$display( "Paths you(%d)->out(%d) %h",  you, out, you);
-		$display( "Paths svr(%d)->out(%d) %h",  svr, out, svr);
-		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
+		$display( "%b%b%b : you = %d, dac = %d, fft = %d, svr = %d ",  out[0], fft_ofs[0], dac_ofs[0], you, dac, fft, svr);
+		out     = 1;
+		fft_ofs = 0;
+		dac_ofs = 0;
+		@(negedge clk);
+		out_you = you;
+		out_fft = fft;
+		out_dac = dac;
+		$display( "%b%b%b : you = %d, dac = %d, fft = %d, svr = %d ",  out[0], fft_ofs[0], dac_ofs[0], you, dac, fft, svr);
+		out     = 0;
+		fft_ofs = 1;
+		dac_ofs = 0;
+		@(negedge clk);
+		fft_svr = svr;
+		fft_dac = dac;
+		$display( "%b%b%b : you = %d, dac = %d, fft = %d, svr = %d ",  out[0], fft_ofs[0], dac_ofs[0], you, dac, fft, svr);
+		out     = 0;
+		fft_ofs = 0;
+		dac_ofs = 1;
+		@(negedge clk);
+		dac_fft = fft;
+		dac_svr = svr;
+		$display( "%b%b%b : you = %d, dac = %d, fft = %d, svr = %d ",  out[0], fft_ofs[0], dac_ofs[0], you, dac, fft, svr);
+		
+		// Solutions
+		$display( "all YOU-OUT paths   : %d", out_you );
+		$display( "all YOU-DAC-FFT-OUT : %d", out_fft * fft_dac * dac_svr );
+		$display( "all YOU-FFT-DAC-OUT : %d", out_dac * dac_fft * fft_svr );
 		$finish();
 	end // initial
 
@@ -61,9 +66,15 @@ module day11_tb();
 	aoc_day11 i_day11 (
 		.clk	( clk ),
 		.reset	( reset ),
+		// circuit inputs
 		.out    ( out ),
+		.fft_ofs( fft_ofs ),
+		.dac_ofs( dac_ofs ),
+		// Circuit outputs
 		.svr    ( svr ),
-		.you    ( you )
+		.you    ( you ),
+		.fft    ( fft ),
+		.dac    ( dac )
 	);
 endmodule
 
@@ -74,8 +85,12 @@ module aoc_day11 (
 	input logic clk,
 	input logic reset,
 	input logic [63:0] out,
+	input logic [63:0] fft_ofs,
+	input logic [63:0] dac_ofs,
 	output logic [63:0] svr,
-	output logic [63:0] you
+	output logic [63:0] you,
+	output logic [63:0] fft,
+	output logic [63:0] dac
 	);
 
 `include "day11_declaration.sv"

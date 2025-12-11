@@ -19,6 +19,8 @@ int main( int argc, char **argv )
 	id[idxof('y','o','u')] = 2; // You
 	id[idxof('o','u','t')] = 2; // Out
 	id[idxof('s','v','r')] = 2; // SVR
+	id[idxof('d','a','c')] = 3; // DAC
+	id[idxof('f','f','t')] = 3; // FFT
 
 	c = fgetc( fp );
 	cc = 0;
@@ -38,8 +40,10 @@ int main( int argc, char **argv )
 			cc=0;
 			break;
 		case 0x0a:
-			
-			fprintf(opfp, "assign %c%c%c = %c%c%c ", word[0][0], word[0][1], word[0][2],  word[1][0], word[1][1], word[1][2] );
+			if( id[idxof( word[0][0], word[0][1], word[0][2])] == 3 ) 
+				fprintf(opfp, "assign %c%c%c = %c%c%c_ofs + %c%c%c ", word[0][0], word[0][1], word[0][2], word[0][0], word[0][1], word[0][2],  word[1][0], word[1][1], word[1][2] );
+			else
+				fprintf(opfp, "assign %c%c%c = %c%c%c ", word[0][0], word[0][1], word[0][2],  word[1][0], word[1][1], word[1][2] );
 			for( int ii = 2; ii <= ww; ii++ ) 
 				fprintf(opfp, "+ %c%c%c ", word[ii][0], word[ii][1], word[ii][2] );
 			fprintf(opfp, ";\n");
