@@ -146,7 +146,7 @@ module day12_tb();
 		end
 		for( int ii = 0; ii < 10; ii++ ) @(negedge clk);
 		$display( "Total Trees = %d",  	sum1);
-		$display( "Min Feasible Trees = %d)",  sum2);
+		$display( "Min Feasible Trees = %d",  sum2);
 
 		// Finish
 		$finish();
@@ -186,8 +186,55 @@ module aoc_day12 (
 	);
 	//black box simple response
 	assign wready = 1;
-	always_ff @(posedge clk) begin
+	//always_ff @(posedge clk) begin
+	//	sum1 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum1 + 1 : sum1;
+	//	sum2 <= ( reset ) ? 0 : ( wvalid          ) ? sum2 + 1 : sum2;
+	//end
+
+	// Sum1 acculates the numbers of trees
+	always_ff @(posedge clk) 
 		sum1 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum1 + 1 : sum1;
-		sum2 <= ( reset ) ? 0 : ( wvalid          ) ? sum2 + 1 : sum2;
+
+	// Puzzle Pieces shift input
+	logic [5:0][8:0] puzzle;
+	always @(posedge clk) 
+		puzzle <= ( wvalid && wuser == 2'h0 ) ? { puzzle[4:0], wdata[8:0] } : puzzle;
+
+	// Width Heigth area;
+	logic [5:0] width, height;
+	logic [15:0] area;
+	always_ff @(posedge clk) 
+		{ width, height } <= ( wvalid && wuser == 2'h1 ) ? { height, wdata[5:0] } : { width, height };
+	assign area = width * height;
+
+	// Shift in present counts
+	logic [5:0][6:0] presents;
+	always_ff @(posedge clk) 
+		presents <= ( wvalid && wuser == 2'h2 ) ? { presents[4:0], wdata[6:0] } : presents;
+
+	// Determine pzzle piece sizes
+	logic [5:0][3:0] size;
+	always_comb 
+		for( int ii = 0; ii < 6; ii++ ) 
+			size[ii] = ((puzzle[ii][0] + puzzle[ii][1]) + (puzzle[ii][2] + puzzle[ii][3])) +
+		                   ((puzzle[ii][4] + puzzle[ii][5]) + (puzzle[ii][6] + puzzle[ii][7])) + puzzle[ii][8];
+
+	// First filter determine area is large enough to even be considered viable
+	logic [15:0] required_area;
+	logic viable;
+	assign required_area = size[0] * presents[0] +
+		               size[1] * presents[1] +
+		               size[2] * presents[2] +
+		               size[3] * presents[3] +
+		               size[4] * presents[4] +
+		               size[5] * presents[5] ;
+	assign viable = ( required_area <= area ) ? 1'b1 : 1'b0;
+
+	// Sum2 Counts the number of viable trees 
+	// done 1 cycle after last present count for a given tree
+	logic wlast_d;
+	always_ff @(posedge clk) begin
+		wlast_d <= ( wvalid && wlast && wuser == 2'h2 ) ? 1'b1 : 1'b0;
+		sum2 <= ( reset ) ? 0 : ( wlast_d ) ? sum2 + viable : sum2;
 	end
 endmodule
