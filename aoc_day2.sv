@@ -121,19 +121,34 @@ module day2_tb();
 
 	// Log data into device
 	//always @(posedge clk)
-	//	if( wvalid ) 
+	//	if( wvalid & wready ) 
 	//		$display("data %h last %b", wdata, wlast );
 
-	// Instantiate day 10 synthesizable verilog 
-	aoc_day2 i_day2 (
+	// Instantiate day 2 synthesizable verilog 
+	// write data to both, and and link together valids and readys
+	logic wready1, wready2;
+	logic wvalid1, wvalid2;
+	assign wready = wready1 & wready2;
+	assign wvalid1 = wvalid & wready1 & wready2;
+	assign wvalid2 = wvalid & wready1 & wready2;
+
+	aoc_day2_part1 i_day2 (
 		.clk	( clk ),
 		.reset	( reset ),
-		.wvalid	( wvalid ),
-		.wready	( wready ),
+		.wvalid	( wvalid1 ),
+		.wready	( wready1 ),
 		.wdata 	( wdata  ),
 		.wlast 	( wlast  ),
-		.sum1   ( sum1 ),
-		.sum2   ( sum2 )
+		.sum1   ( sum1 )
+	);
+	aoc_day2_part2 i_day2_2 (
+		.clk	( clk ),
+		.reset	( reset ),
+		.wvalid	( wvalid2),
+		.wready	( wready2),
+		.wdata 	( wdata  ),
+		.wlast 	( wlast  ),
+		.sum1   ( sum2 )
 	);
 endmodule
 
@@ -141,7 +156,57 @@ endmodule
 // AOC Day 2 Hardware
 // ----------------------------------------------------------------------------------------------
 //
-module aoc_day2 (
+module aoc_day2_part2 (
+	input logic clk,
+	input logic reset,
+	input logic wvalid,
+	input logic wlast,
+	input logic [31:0] wdata,
+	output logic wready,
+	output logic [63:0] sum1,
+	output logic [63:0] sum2
+	);
+	//black box simple response
+	assign wready = 1;
+	always_ff @(posedge clk) begin
+		sum1 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum1 + 1 : sum1;
+		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
+	end
+
+	// shift in upper/lower ranges each as 64-bit BCD number
+	// write order lower lsb, lower msb, upper lsb, upper msb(last)
+	logic [63:0] lower_reg;
+	logic [63:0] upper_reg;
+	always_ff @(posedge clk)
+		if( wvalid && wready ) begin
+			upper_reg[63:32] <= wdata[31:0];
+			upper_reg[31: 0] <= upper_reg[63:32];
+			lower_reg[63:32] <= upper_reg[31:0];
+			lower_reg[31: 0] <= lower_reg[63:32];
+		end
+
+
+	// Delay line timing trigger by rot write (in lieu of state machine) TBD
+	logic [49:0] tick;
+	always_ff @(posedge clk) begin
+		if( reset ) begin
+			tick <= 0;
+		end else if ( wvalid && wready && wlast) begin // write to reg 4 triggers flow TBD
+			tick <= 50'h1;
+		end else begin
+			tick <= { tick[48:0], 1'b0 };
+		end
+	end
+
+	//////////////////////////
+	// Day 2 Part 2 Puzzle logic
+	//////////////////////////
+
+endmodule
+
+
+
+module aoc_day2_part1 (
 	input logic clk,
 	input logic reset,
 	input logic wvalid,
@@ -184,7 +249,7 @@ module aoc_day2 (
 	end
 
 	//////////////////////////
-	// Day 2 Puzzle logic
+	// Day 2 Part 1 Puzzle logic
 	//////////////////////////
 
 	// Examine the registers to determine number of BCD digits in lower and upper (assume equal or +1 for upper)
