@@ -22,7 +22,7 @@ module day2_tb();
                 end
                 reset = 0;
                 $display("Reset done");
-                for( int ii = 0; ii < 2000000; ii++ ) begin
+                for( int ii = 0; ii < 9000000; ii++ ) begin
                         @(negedge clk);
                 end
                 $display("halted dur to clock limit");
@@ -33,7 +33,7 @@ module day2_tb();
 	initial begin
         	$timeformat(-9, 0, "ns", 12); // 1: scale (ns=-9), 2: decimals, 3: suffix, 4: print-field width
         	$dumpfile("day2.fst");
-        	$dumpvars(1,i_day2);
+        	$dumpvars(2,i_day2,i_day2_2 );
         end
 	
 
@@ -139,8 +139,10 @@ module day2_tb();
 		.wready	( wready1 ),
 		.wdata 	( wdata  ),
 		.wlast 	( wlast  ),
-		.sum1   ( sum1 )
+		.sum1   ( sum1 ),
+		.sum2   (      )
 	);
+
 	aoc_day2_part2 i_day2_2 (
 		.clk	( clk ),
 		.reset	( reset ),
@@ -148,7 +150,8 @@ module day2_tb();
 		.wready	( wready2),
 		.wdata 	( wdata  ),
 		.wlast 	( wlast  ),
-		.sum1   ( sum2 )
+		.sum1   ( sum2 ),
+		.sum2   (      )
 	);
 endmodule
 
@@ -167,9 +170,9 @@ module aoc_day2_part2 (
 	output logic [63:0] sum2
 	);
 	//black box simple response
-	assign wready = 1;
+	//assign wready = 1;
 	always_ff @(posedge clk) begin
-		sum1 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum1 + 1 : sum1;
+	//	sum1 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum1 + 1 : sum1;
 		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
 	end
 
@@ -201,6 +204,115 @@ module aoc_day2_part2 (
 	//////////////////////////
 	// Day 2 Part 2 Puzzle logic
 	//////////////////////////
+	
+	// test BCD counter is loaded from lower and increments until it equals
+	// the upper limit
+	logic [63:0] test, inc_test;
+	bcd_inc64 i_bcd_inc ( .in( test ), .out( inc_test ) );
+	always_ff @(posedge clk) 
+		test <= ( reset ) ? 0 : ( tick[0] ) ? lower_reg : ( valid ) ? inc_test : test;
+
+	// Valid flag indicates test should be considered
+	logic valid; // inclusive
+	always_ff @(posedge clk) 
+		valid <= ( reset ) ? 0 : ( tick[0] ) ? 1 : ( test == upper_reg ) ? 0 : valid;
+	assign wready = !( tick[0] | valid );
+
+	// Examine the test counter to determine its number of BCD digits
+	logic [15:0] tflag; // presence of non zero digit
+	logic [4:0] digits; // count of bcd digits
+	always_comb begin
+		for( int ii = 0; ii < 16; ii++ ) 
+			tflag[ii] = |test[ii*4+3-:4];
+		digits =( tflag[15] ) ? 5'd16 : ( tflag[14] ) ? 5'd15 : ( tflag[13] ) ? 5'd14 : ( tflag[12] ) ? 5'd13 :
+                        ( tflag[11] ) ? 5'd12 : ( tflag[10] ) ? 5'd11 : ( tflag[ 9] ) ? 5'd10 : ( tflag[ 8] ) ? 5'd9  :
+                        ( tflag[ 7] ) ? 5'd8  : ( tflag[ 6] ) ? 5'd7  : ( tflag[ 5] ) ? 5'd6  : ( tflag[ 4] ) ? 5'd5  :
+                        ( tflag[ 3] ) ? 5'd4  : ( tflag[ 2] ) ? 5'd3  : ( tflag[ 1] ) ? 5'd2  : ( tflag[ 0] ) ? 5'd1  : 5'd0;
+	end
+
+	// Determine replications of lengths 1 to 8
+	// over an integer number of repeats
+	logic invalid;
+	logic [16:2][8:1] pattern; 
+	logic [15:0][3:0] d; // digits of test
+	always_comb begin
+		pattern = 0;
+		d = test; // for clarity below
+		if( digits == 16 ) begin
+			pattern[2][8] = d[15:8]==d[7:0];
+			pattern[4][4] = d[15:4]==d[11:0];
+			pattern[8][2] = d[15:2]==d[13:0];
+			pattern[16][1]= d[15:1]==d[14:0];
+		end
+		if (digits == 15 ) begin
+			pattern[3][5] = d[14:5]==d[9:0];
+			pattern[5][3] = d[14:3]==d[10:0];
+			pattern[15][1]= d[14:1]==d[13:0];
+		end
+		if (digits == 14 ) begin
+			pattern[2][7] = d[13:7]==d[6:0];
+			pattern[7][2] = d[13:2]==d[11:0];
+			pattern[14][1]= d[13:1]==d[12:0];
+		end
+		if (digits == 13 ) begin
+			pattern[13][1]= d[12:1]==d[11:0];
+		end
+		if (digits == 12 ) begin
+			pattern[2][6] = d[11:6]==d[5:0];
+			pattern[3][4] = d[11:4]==d[7:0];
+			pattern[4][3] = d[11:3]==d[11:0];
+			pattern[6][2] = d[11:2]==d[13:0];
+			pattern[12][1]= d[11:1]==d[14:0];
+		end
+		if (digits == 11 ) begin
+			pattern[11][1]= d[10:1]==d[9:0];
+		end
+		if (digits == 10 ) begin
+			pattern[2][5] = d[9:5]==d[4:0];
+			pattern[5][2] = d[9:2]==d[7:0];
+			pattern[10][1]= d[9:1]==d[8:0];
+		end
+		if (digits == 9 ) begin
+			pattern[3][3] = d[8:3]==d[5:0];
+			pattern[9][1] = d[8:1]==d[7:0];
+		end
+		if (digits == 8 ) begin
+			pattern[2][4] = d[7:4]==d[3:0];
+			pattern[4][2] = d[7:2]==d[5:0];
+			pattern[8][1] = d[7:1]==d[6:0];
+		end
+		if (digits == 7 ) begin
+			pattern[7][1]= d[6:1]==d[5:0];
+		end
+		if (digits == 6 ) begin
+			pattern[2][3] = d[5:3]==d[2:0];
+			pattern[3][2] = d[5:2]==d[3:0];
+			pattern[6][1] = d[5:1]==d[4:0];
+		end
+		if (digits == 5 ) begin
+			pattern[5][1] = d[4:1]==d[3:0];
+		end
+		if (digits == 4 ) begin
+			pattern[2][2] = d[3:2]==d[1:0];
+			pattern[4][1] = d[3:1]==d[2:0];
+		end
+		if (digits == 3 ) begin
+			pattern[3][1] = d[2:1]==d[1:0];
+		end
+		if (digits == 2 ) begin
+			pattern[2][1] = d[1:1]==d[0:0];
+		end
+		// any repeated contruction is invalid. 
+		invalid = |pattern; // Reduction OR
+	end
+
+	// BCD accumulate of invalid test values (during valid test periods)
+	logic [63:0] bcd_sum;
+	bcd_add64 i_bcd_add( .ina( test ), .inb( sum1 ), .sum( bcd_sum ));
+
+	// Sum1 
+	always_ff @(posedge clk)
+		sum1 <= ( reset ) ? 0 : ( valid && invalid ) ? bcd_sum : sum1;
 
 endmodule
 
@@ -349,25 +461,30 @@ module aoc_day2_part1 (
 		end
 	end
 	assign sum1 = sum_part1;
-	assign wready = !valid; // wready will drop on last write of range, and finish when ready for anoth
+	assign wready = !( tick[0] | valid);
+endmodule
+
+module bcd_inc64 (
+	input logic [15:0][3:0] in,
+	output logic [15:0][3:0] out
+	);
+	logic [16:0] c;
+	always_comb begin // should be a loop, but ... verilator?
+		c[0] = 1;
+		for( int ii = 0; ii < 16; ii++ ) begin
+			out[ii] = (in[ii]==4'h9&&c[ii])?4'h0:in[ii]+c[ii]; 
+			c[ii+1]=(in[ii]==4'h9&&c[ii])?1'b1:1'b0;
+		end
+	end
 endmodule
 
 module bcd_inc32 (
 	input logic [7:0][3:0] in,
 	output logic [7:0][3:0] out
 	);
-	logic [8:0] c;
-	always_comb begin // should be a loop, but ... verilator?
-		c[0] = 1;
-		out[0] = (in[0]==4'h9&&c[0])?4'h0:in[0]+c[0]; c[1]=(in[0]==4'h9&&c[0])?1'b1:1'b0;
-		out[1] = (in[1]==4'h9&&c[1])?4'h0:in[1]+c[1]; c[2]=(in[1]==4'h9&&c[1])?1'b1:1'b0;
-		out[2] = (in[2]==4'h9&&c[2])?4'h0:in[2]+c[2]; c[3]=(in[2]==4'h9&&c[2])?1'b1:1'b0;
-		out[3] = (in[3]==4'h9&&c[3])?4'h0:in[3]+c[3]; c[4]=(in[3]==4'h9&&c[3])?1'b1:1'b0;
-		out[4] = (in[4]==4'h9&&c[4])?4'h0:in[4]+c[4]; c[5]=(in[4]==4'h9&&c[4])?1'b1:1'b0;
-		out[5] = (in[5]==4'h9&&c[5])?4'h0:in[5]+c[5]; c[6]=(in[5]==4'h9&&c[5])?1'b1:1'b0;
-		out[6] = (in[6]==4'h9&&c[6])?4'h0:in[6]+c[6]; c[7]=(in[6]==4'h9&&c[6])?1'b1:1'b0;
-		out[7] = (in[7]==4'h9&&c[7])?4'h0:in[7]+c[7];
-	end
+	logic [15:0][3:0] wide;
+	bcd_inc64 i_inc64( .in( { 64'h0, in } ), .out( wide ) );
+	assign out = wide[7:0];
 endmodule
 
 module bcd_add64 (
