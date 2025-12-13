@@ -1,5 +1,4 @@
-
-Another croc chip for the 2025 Day-2 puzzle solution generation.
+# Day-2 implemented as a chip for the 2025 Day-2 Part 1 puzzle solution generation.
 
 Because we can re-use the I/O structure as before, puzzle text goes into the chip via rs232 uart and answer sum is returned via same.
 
@@ -20,7 +19,34 @@ I'll have to give it a think and maybe circle back and try part 2.
 
 ![Day2sim](croc_day2_sim.png)
 
-Done for now .... maybe part 2 later.
+## Day 2 - Part 2
+
+I can back an wrote synthesizable verilog and behavioral test bench for part 2. Its alot quicker to simulate than a full chip.
+the hardware interface is a 32-bit axi-like stream interface for the range data. Each 64 bit bcd range is shifted in over 4 cycles
+as the testbench parses the file. The stream interface is blocked and the test counter steps thru the BCD range. Each cycle the data
+is examined for the defined repeast pattern to identify invalid which are added to the 64bit bcd assumulator sum. 
+
+I also added the part 1 logic to run in parallel (with some cross coupling of the ready/valids).
+The files for this verilog code and test are:
+
+    day2_puzzle.txt
+	aoc_day2.sv - the behvioral testbench and hardware units for part1 and part2
+	day2_run.sh - runs verilator
+
+When run we get the following in 4.5 secs (rather than above with the full croc SOC)
+
+     V e r i l a t i o n   R e p o r t: Verilator 5.040 2025-08-30 rev v5.040
+    - Verilator: Built from 0.000 MB sources in 0 modules, into 0.000 MB in 0 C++ files needing 0.000 MB
+    - Verilator: Walltime 0.008 s (elab=0.000, cvt=0.000, bld=0.008); cpu 0.001 s on 4 threads; alloced 29.340 MB
+    Reset done
+    Reading puzzle ranges
+    Part 1 Sum = 0000034826702005
+    Part 2 Sum = 0000043287141963
+    - aoc_day2.sv:119: Verilog $finish
+    - S i m u l a t i o n   R e p o r t: Verilator 5.040 2025-08-30
+    - Verilator: $finish at 41ms; walltime 4.582 s; speed 4.037 ms/s
+    - Verilator: cpu 10.130 s on 1 threads; alloced 582 MB
+
 
 The distributed croc readme follows.
 
