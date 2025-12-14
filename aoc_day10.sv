@@ -206,19 +206,33 @@ module aoc_day10 (
 	// Target lights for match condition
 	logic [9:0] target;
 	always_ff @(posedge clk)
-		target <= ( reset ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
+		target <= ( reset ||  wready && !wready_d ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
 
-	// Button array allow 16, puzzle seems to max at 13
+	// Button array max at 10
 	// Shift in during button writes
-	logic [15:0][9:0] button;
+	logic [9:0][9:0] button;
 	always_ff @(posedge clk) 
-		button <= ( reset ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[14:0], wdata[9:0] } : button;
+		button <= ( reset ||  wready && !wready_d ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[8:0], wdata[9:0] } : button;
 
 	// Joltage shift in
-	logic [14:0][15:0] joltage;
+	logic [9:0][8:0] joltage;
 	always_ff @(posedge clk) 
-		joltage <= ( reset ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[14:0], wdata[15:0] } : joltage;
+		joltage <= ( reset ||  wready && !wready_d ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[8:0], wdata[8:0] } : joltage;
 	
+	initial begin
+		for( int count = 0; 1 ; count++ ) begin
+			while( !(  wvalid && wready && wlast ) ) @(negedge clk);
+			$display("EQN %d", count );
+			@( negedge clk);
+			for( int ii = 0; ii < 10; ii++ ) 
+				$display("%b %b %b %b %b %b %b %b %b %b  |  %d", 
+                                	button[0][ii], button[1][ii],  button[2][ii],  button[3][ii],  button[4][ii],  button[5][ii],  button[6][ii],  button[7][ii],  button[8][ii],  button[9][ii], joltage[ii] );
+			@( negedge clk);
+		end
+	end
+
+
+			
 
 	// Counter, shifts in 1's with each button, and then count down to
 	// zero
