@@ -1,3 +1,4 @@
+# Advant of Code, Day 1
 
 Upping the ante a bit an challenging myself to design a chip specifically for the AoC 2025 Day-1 puzzle solution generation.
 
