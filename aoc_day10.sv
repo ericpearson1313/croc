@@ -210,14 +210,18 @@ module aoc_day10 (
 
 	// Target lights for match condition
 	logic [9:0] target;
-	always_ff @(posedge clk)
+	always_ff @(posedge clk) begin
 		target <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
+	end
 
 	// Button array max at 10
 	// Shift in during button writes
-	logic [9:0][9:0] button;
-	always_ff @(posedge clk) 
-		button <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[8:0], wdata[9:0] } : button;
+	logic [13:0][9:0] button;
+	logic [3:0] buttons;
+	always_ff @(posedge clk) begin
+		button <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[12:0], wdata[9:0] } : button;
+		buttons<= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[1] ) ? buttons + 1 : buttons;
+	end
 
 	// Joltage shift in
 	logic [9:0][8:0] joltage;
@@ -232,8 +236,8 @@ module aoc_day10 (
 	// Behavior 10x10+1 Ax=b liner system upper triangular of [A|b]
 	//////////////////////////////////////////////////////////////////
 	//      Y     X
-	logic signed [0:9][0:10][15:0] A;
-	logic signed [0:10][15:0] temp;
+	logic signed [0:9][0:15][15:0] A;
+	logic signed [0:15][15:0] temp;
 	integer Y, X;
 	integer flag;
 	initial begin
@@ -243,19 +247,19 @@ module aoc_day10 (
 		@( negedge clk);
 		// Copy in buttons and joltage (reverse order of joltage)
 		for( int yy = 0; yy < 10; yy++ ) begin
-			A[yy][10] = joltage[jolts-1-yy]; // flip jolt order hack
-			for( int xx = 0; xx < 10; xx++ ) begin
+			A[yy][15] = joltage[jolts-1-yy]; // flip jolt order hack
+			for( int xx = 0; xx < 15; xx++ ) begin
 				A[yy][xx] = button[xx][yy];
 			end
 		end
 		// dump matrix
 		for( int yy = 0; yy < 10; yy++ ) 
-				$display("%d %d %d %d %d | %d %d %d %d %d  ||  %d", 
-					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10] );
+				$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
+					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
 		// itterate and reduce
 		X=0; Y=0;
 		flag = 0;
-		while( X<10 && Y<10 ) begin
+		while( X<15 && Y<10 ) begin
 			$display("X,Y = [%d,%d]", Y, X );
 			if( A[Y][X] == 0 ) begin
 				$display("A[%d][%d] == 0", Y, X );
@@ -281,7 +285,7 @@ module aoc_day10 (
 				for( int yy = Y+1; yy < 10; yy++ ) begin
 					if( A[yy][X] != 0 ) begin // reduce to zero
 						$display("reduce rows A[%d]=A[%d]-A[%d]", yy, yy,  Y );
-						for( int xx = X+1; xx < 11; xx++ ) begin
+						for( int xx = X+1; xx < 16; xx++ ) begin
 							A[yy][xx] = A[Y][X] * A[yy][xx] - A[yy][X] * A[Y][xx];
 						end
 						A[yy][X] = 0;
@@ -293,10 +297,10 @@ module aoc_day10 (
 			end
 		end
 		// dump matrix
-		$display("Triangular Matrix");
+		$display("[%d X %d] Triangular Matrix", buttons, jolts);
 		for( int yy = 0; yy < 10; yy++ ) 
-				$display("%d %d %d %d %d | %d %d %d %d %d  ||  %d", 
-					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10] );
+				$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
+					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
 		@( negedge clk);
 	    end
 	end
