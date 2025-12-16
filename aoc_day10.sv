@@ -79,8 +79,13 @@ module day10_tb();
 							waitcount = waitcount+1;
 						end
 						$display( "Wait wready cycles = %d",  waitcount );
-						wuser = 3'b001; // target phase
+						@(negedge clk);
+						wvalid = 1;
+						wuser = 7;
 						wdata = 0;
+						@(negedge clk);
+						wuser = 3'b001; // target phase
+						wvalid = 0;
 						vidx = 1;
 				      	end
 				"." : 	begin
@@ -136,9 +141,9 @@ module day10_tb();
 					end
 				8'h0a : begin
 						wdata = 0;
+						wdata = 0;
 						wvalid = 0;
 						wlast = 0;
-						wuser = 0;
 						$display( "EOL");
 					end
 				endcase
@@ -206,33 +211,100 @@ module aoc_day10 (
 	// Target lights for match condition
 	logic [9:0] target;
 	always_ff @(posedge clk)
-		target <= ( reset ||  wready && !wready_d ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
+		target <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[0] ) ? wdata[9:0] : target;
 
 	// Button array max at 10
 	// Shift in during button writes
 	logic [9:0][9:0] button;
 	always_ff @(posedge clk) 
-		button <= ( reset ||  wready && !wready_d ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[8:0], wdata[9:0] } : button;
+		button <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[1] ) ? { button[8:0], wdata[9:0] } : button;
 
 	// Joltage shift in
 	logic [9:0][8:0] joltage;
-	always_ff @(posedge clk) 
-		joltage <= ( reset ||  wready && !wready_d ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[8:0], wdata[8:0] } : joltage;
-	
-	initial begin
-		for( int count = 0; 1 ; count++ ) begin
-			while( !(  wvalid && wready && wlast ) ) @(negedge clk);
-			$display("EQN %d", count );
-			@( negedge clk);
-			for( int ii = 0; ii < 10; ii++ ) 
-				$display("%b %b %b %b %b %b %b %b %b %b  |  %d", 
-                                	button[0][ii], button[1][ii],  button[2][ii],  button[3][ii],  button[4][ii],  button[5][ii],  button[6][ii],  button[7][ii],  button[8][ii],  button[9][ii], joltage[ii] );
-			@( negedge clk);
-		end
+	logic [3:0] jolts; // generator count
+	always_ff @(posedge clk) begin
+		joltage <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[8:0], wdata[8:0] } : joltage;
+		jolts <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] ) ? jolts + 1 : jolts;
 	end
 
 
-			
+	//////////////////////////////////////////////////////////////////
+	// Behavior 10x10+1 Ax=b liner system upper triangular of [A|b]
+	//////////////////////////////////////////////////////////////////
+	//      Y     X
+	logic signed [0:9][0:10][15:0] A;
+	logic signed [0:10][15:0] temp;
+	integer Y, X;
+	integer flag;
+	initial begin
+   	    for( int count = 0; 1 ; count++ ) begin
+		while( !(  wvalid && wready && wuser[2:0]==4 && wlast ) ) @(negedge clk); // wait for end of line
+			$display("EQN %d", count );
+		@( negedge clk);
+		// Copy in buttons and joltage (reverse order of joltage)
+		for( int yy = 0; yy < 10; yy++ ) begin
+			A[yy][10] = joltage[jolts-1-yy]; // flip jolt order hack
+			for( int xx = 0; xx < 10; xx++ ) begin
+				A[yy][xx] = button[xx][yy];
+			end
+		end
+		// dump matrix
+		for( int yy = 0; yy < 10; yy++ ) 
+				$display("%d %d %d %d %d | %d %d %d %d %d  ||  %d", 
+					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10] );
+		// itterate and reduce
+		X=0; Y=0;
+		flag = 0;
+		while( X<10 && Y<10 ) begin
+			$display("X,Y = [%d,%d]", Y, X );
+			if( A[Y][X] == 0 ) begin
+				$display("A[%d][%d] == 0", Y, X );
+				// Test if any non zero in COL below Y,X
+				flag = Y;
+				for( int yy = Y+1; yy < 10; yy++ ) begin
+					if( A[yy][X] != 0 ) begin
+						flag = yy;
+					end
+				end
+				if( flag == Y ) begin // col Y and below zero
+					$display("All below A[%d][%d] are zero too, next col", Y, X );
+					X++; // advance to next col and try again
+				end else begin // swap rows
+					$display("Swap rows A[%d] and A[%d]", Y, flag );
+					temp = A[flag];
+					A[flag] = A[Y];
+					A[Y] = temp;
+				end
+			end else begin
+				// Zero out the column below A[X][Y] by reduction
+				$display("Zero column below A[%d][%d]", Y, X);
+				for( int yy = Y+1; yy < 10; yy++ ) begin
+					if( A[yy][X] != 0 ) begin // reduce to zero
+						$display("reduce rows A[%d]=A[%d]-A[%d]", yy, yy,  Y );
+						for( int xx = X+1; xx < 11; xx++ ) begin
+							A[yy][xx] = A[Y][X] * A[yy][xx] - A[yy][X] * A[Y][xx];
+						end
+						A[yy][X] = 0;
+					end
+				end
+				// Step to next row, col
+				$display("Step X++, Y++");
+				Y++;  X++;
+			end
+		end
+		// dump matrix
+		$display("Triangular Matrix");
+		for( int yy = 0; yy < 10; yy++ ) 
+				$display("%d %d %d %d %d | %d %d %d %d %d  ||  %d", 
+					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10] );
+		@( negedge clk);
+	    end
+	end
+
+	//////////////////////////////////////////////////////////////////
+	// END Behavioral
+	//////////////////////////////////////////////////////////////////
+	
 
 	// Counter, shifts in 1's with each button, and then count down to
 	// zero
@@ -267,13 +339,7 @@ module aoc_day10 (
 	                ( ( !count[ 6] ) ? 0 : button[ 6] ) ^
 	                ( ( !count[ 7] ) ? 0 : button[ 7] ) ^
 	                ( ( !count[ 8] ) ? 0 : button[ 8] ) ^
-	                ( ( !count[ 9] ) ? 0 : button[ 9] ) ^
-	                ( ( !count[10] ) ? 0 : button[10] ) ^
-	                ( ( !count[11] ) ? 0 : button[11] ) ^
-	                ( ( !count[12] ) ? 0 : button[12] ) ^
-	                ( ( !count[13] ) ? 0 : button[13] ) ^
-	                ( ( !count[14] ) ? 0 : button[14] ) ^
-	                ( ( !count[15] ) ? 0 : button[15] ) ;
+	                ( ( !count[ 9] ) ? 0 : button[ 9] ) ;
 
 	// some monitor registers
 	logic [9:0] lights_reg;
