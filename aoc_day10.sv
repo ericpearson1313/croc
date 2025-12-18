@@ -98,7 +98,7 @@ module day10_tb();
 				      	end
 				"]" : 	begin
 						wvalid = 1;
-						$display( "W Target %d %d %d %b",  wvalid, wuser, wdata, wdata[9:0] );
+						//$display( "W Target %d %d %d %b",  wvalid, wuser, wdata, wdata[9:0] );
 						@(negedge clk);
 				      	end
 				"(" : 	begin
@@ -119,14 +119,14 @@ module day10_tb();
 							// ignore
 						end else if( wuser == 3'b100) begin
 							wvalid = 1;
-							$display( "W Joltage %d %d %d",  wvalid, wuser, wdata );
+							//$display( "W Joltage %d %d %d",  wvalid, wuser, wdata );
 							@(negedge clk);
 							wdata = 0;
 						end
 					end
 				")" : 	begin
 						wvalid = 1;
-						$display( "W Button %d %d %d %b",  wvalid, wuser, wdata, wdata[9:0] );
+						//$display( "W Button %d %d %d %b",  wvalid, wuser, wdata, wdata[9:0] );
 						@(negedge clk);
 				      	end
 				"{" : 	begin
@@ -136,7 +136,7 @@ module day10_tb();
 				"}" : 	begin
 						wvalid = 1;
 						wlast = 1;
-						$display( "W Joltage %d %d %d",  wvalid, wuser, wdata );
+						//$display( "W Joltage %d %d %d",  wvalid, wuser, wdata );
 						@(negedge clk);
 					end
 				8'h0a : begin
@@ -144,7 +144,7 @@ module day10_tb();
 						wdata = 0;
 						wvalid = 0;
 						wlast = 0;
-						$display( "EOL");
+						//$display( "EOL");
 					end
 				endcase
                         	c = $fgetc(file);
@@ -226,9 +226,11 @@ module aoc_day10 (
 	// Joltage shift in
 	logic [9:0][8:0] joltage;
 	logic [3:0] jolts; // generator count
+	logic [8:0] max_jolt;
 	always_ff @(posedge clk) begin
-		joltage <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[8:0], wdata[8:0] } : joltage;
-		jolts <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] ) ? jolts + 1 : jolts;
+		joltage  <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] ) ? { joltage[8:0], wdata[8:0] } : joltage;
+		jolts    <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] ) ? jolts + 1 : jolts;
+		max_jolt <= ( reset ||  wvalid && wready && wuser == 7 ) ? 0 : ( wvalid && wready && wuser[2] && wdata[8:0] > max_jolt ) ? wdata[8:0] : max_jolt;
 	end
 
 
@@ -236,14 +238,22 @@ module aoc_day10 (
 	// Behavior 10x10+1 Ax=b liner system upper triangular of [A|b]
 	//////////////////////////////////////////////////////////////////
 	//      Y     X
-	logic signed [0:9][0:15][15:0] A;
-	logic signed [0:15][15:0] temp;
+	logic signed [0:9][0:15][63:0] A;
+	logic signed       [63:0] min_A, max_A;
+	logic signed [0:15][63:0] temp;
+	logic        [0:14][3:0] bclass; // 1-zero, 2-independant, 3-dependant
+	logic [3:0] ni, max_ni, min_ni;
+	logic [3:0] nd, max_nd, min_nd;
+	logic [3:0] nz, max_nz, min_nz;
 	integer Y, X;
 	integer flag;
 	initial begin
+	    min_A = 0; max_A = 0;
+	    max_ni = 0; max_nd = 0; max_nz = 0;
+	    min_ni = 15; min_nd = 15; min_nz = 15;
    	    for( int count = 0; 1 ; count++ ) begin
 		while( !(  wvalid && wready && wuser[2:0]==4 && wlast ) ) @(negedge clk); // wait for end of line
-			$display("EQN %d", count );
+		$display("EQN %d", count );
 		@( negedge clk);
 		// Copy in buttons and joltage (reverse order of joltage)
 		for( int yy = 0; yy < 10; yy++ ) begin
@@ -253,16 +263,16 @@ module aoc_day10 (
 			end
 		end
 		// dump matrix
-		for( int yy = 0; yy < 10; yy++ ) 
-				$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
-					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
+		//for( int yy = 0; yy < 10; yy++ ) 
+		//		$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
+		//			A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
 		// itterate and reduce
 		X=0; Y=0;
 		flag = 0;
 		while( X<15 && Y<10 ) begin
-			$display("X,Y = [%d,%d]", Y, X );
+			//$display("X,Y = [%d,%d]", Y, X );
 			if( A[Y][X] == 0 ) begin
-				$display("A[%d][%d] == 0", Y, X );
+				//$display("A[%d][%d] == 0", Y, X );
 				// Test if any non zero in COL below Y,X
 				flag = Y;
 				for( int yy = Y+1; yy < 10; yy++ ) begin
@@ -271,20 +281,20 @@ module aoc_day10 (
 					end
 				end
 				if( flag == Y ) begin // col Y and below zero
-					$display("All below A[%d][%d] are zero too, next col", Y, X );
+					//$display("All below A[%d][%d] are zero too, next col", Y, X );
 					X++; // advance to next col and try again
 				end else begin // swap rows
-					$display("Swap rows A[%d] and A[%d]", Y, flag );
+					//$display("Swap rows A[%d] and A[%d]", Y, flag );
 					temp = A[flag];
 					A[flag] = A[Y];
 					A[Y] = temp;
 				end
 			end else begin
 				// Zero out the column below A[X][Y] by reduction
-				$display("Zero column below A[%d][%d]", Y, X);
+				//$display("Zero column below A[%d][%d]", Y, X);
 				for( int yy = Y+1; yy < 10; yy++ ) begin
 					if( A[yy][X] != 0 ) begin // reduce to zero
-						$display("reduce rows A[%d]=A[%d]-A[%d]", yy, yy,  Y );
+						//$display("reduce rows A[%d]=A[%d]-A[%d]", yy, yy,  Y );
 						for( int xx = X+1; xx < 16; xx++ ) begin
 							A[yy][xx] = A[Y][X] * A[yy][xx] - A[yy][X] * A[Y][xx];
 						end
@@ -292,7 +302,7 @@ module aoc_day10 (
 					end
 				end
 				// Step to next row, col
-				$display("Step X++, Y++");
+				//$display("Step X++, Y++");
 				Y++;  X++;
 			end
 		end
@@ -301,8 +311,56 @@ module aoc_day10 (
 		for( int yy = 0; yy < 10; yy++ ) 
 				$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
 					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
-		@( negedge clk);
+
+		// Now walk diagonal and classify each variable
+		Y = 0;
+		X = 0;
+		nd = 0; ni = 0; nz = 0;
+		while( X<15 && Y<10 ) begin
+			if( A[Y][X] == 0 ) begin
+				flag = 0;
+				for( int yy = 0; yy < Y; yy++ )
+					if( A[yy][X] != 0 ) flag = 1;
+				bclass[X] = ( flag ) ? 2 : 1; // indepant or zero 
+				nz = ( flag ) ? nz : nz+1;
+				ni = ( flag ) ? ni+1: ni;
+				X++;
+			end else begin
+				bclass[X] = 3;
+				nd++;
+				X++; Y++;
+			end
+		end
+		for( int xx = X; xx < 15; xx++ ) begin
+			flag = 0;
+			for( int yy = 0; yy < Y; yy++ )
+				if( A[yy][xx] != 0 ) flag = 1;
+			bclass[xx] = ( flag ) ? 2 : 1; // indepant or zero 
+			nz = ( flag ) ? nz : nz+1;
+			ni = ( flag ) ? ni+1: ni;
+		end
+		// Update COeff min/max
+        	$display("Classificatin: %0h", bclass );
+		$display("ND %d NI %d, NZ %d", nd, ni, nz );
+		if( nd + ni + nz != 15 )
+			$display("ASSERT total [%d] must be 15", nd + ni + nz );
+		// Do some min/maxes so we can see the ranges 
+		for( int xx = 0; xx < 16; xx++ ) begin
+			for( int yy = 0; yy < 10; yy++ ) begin
+				min_A = ( A[yy][xx] < min_A ) ? A[yy][xx] : min_A;
+				max_A = ( A[yy][xx] > max_A ) ? A[yy][xx] : max_A;
+			end
+		end
+	    	if( ni > max_ni ) max_ni = ni;
+	    	if( nd > max_nd ) max_nd = nd;
+	    	if( nz > max_nz ) max_nz = nz;
+	    	if( ni < min_ni ) min_ni = ni;
+	    	if( nd < min_nd ) min_nd = nd;
+	    	if( nz < min_nz ) min_nz = nz;
+		$display("MIN/MAX ni %d/%d nd %d/%d nz %d/%d A%d/%d", min_ni, max_ni, min_nd, max_nd, min_nz, max_nz, min_A, max_A );
 	    end
+
+	    @( negedge clk);
 	end
 
 	//////////////////////////////////////////////////////////////////
@@ -356,10 +414,10 @@ module aoc_day10 (
 	end
 
 	// debug to remove
-	always_ff @(posedge clk) begin
-		if( !wready && lights == target )
-			$display( "hit count 0x%x %b", count, count );
-	end
+	//always_ff @(posedge clk) begin
+	//	if( !wready && lights == target )
+	//		$display( "hit count 0x%x %b", count, count );
+	//end
 	
 	// maintain min presses for matche
 	logic [4:0] min_presses;
@@ -374,8 +432,8 @@ module aoc_day10 (
 		sum1 <= ( reset ) ? 0 : 
 			( wready && !wready_d ) ? sum1 + min_presses : sum1;
 		// debug to remove
-		if( wready && !wready_d ) 
-			$display("Fewest presses %d", min_presses );
+		//if( wready && !wready_d ) 
+		//	$display("Fewest presses %d", min_presses );
 	end
 	
 	// We'll just have sum2 count machines for now
