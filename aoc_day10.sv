@@ -247,6 +247,11 @@ module aoc_day10 (
 	logic [3:0] nz, max_nz, min_nz;
 	integer Y, X;
 	integer flag;
+	logic signed [14:0][63:0] V;
+	logic [2:0][8:0] depc;
+	integer count, min_count;
+	logic [14:0][3:0] bxpos, bypos;
+	logic [63:0] dot_div, dot_sum;
 	initial begin
 	    min_A = 0; max_A = 0;
 	    max_ni = 0; max_nd = 0; max_nz = 0;
@@ -312,7 +317,8 @@ module aoc_day10 (
 				$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
 					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
 
-		// Now walk diagonal and classify each variable
+		// Now walk diagonal and classify each variable 
+		// 1-zero ,2-indepedant, 3-depeandant
 		Y = 0;
 		X = 0;
 		nd = 0; ni = 0; nz = 0;
@@ -327,6 +333,8 @@ module aoc_day10 (
 				X++;
 			end else begin
 				bclass[X] = 3;
+				bxpos[X] = X;
+				bypos[X] = Y;
 				nd++;
 				X++; Y++;
 			end
@@ -339,6 +347,56 @@ module aoc_day10 (
 			nz = ( flag ) ? nz : nz+1;
 			ni = ( flag ) ? ni+1: ni;
 		end
+		
+		// Generating indpendant and evaluating dependants
+		V[14:0] = 0; // zero all variables at start
+		depc = 0; // zero independant varaibles upon which others depend
+		// Solve at 
+		while(  ni == 0 || 
+			ni == 1 && depc[0] < max_jolt || 
+			ni == 2 && depc[0] < max_jolt && depc[1] < max_jolt ||
+			ni == 3 && depc[0] < max_jolt && depc[1] < max_jolt && depc[2] < max_jolt ) begin
+			// walk the list and insert independant varaibles // firstk
+			count = 0;
+			for( int idx = 0; idx < 15; idx++ )
+				if( bclass[idx] == 2 ) 
+					V[idx] = depc[count++];
+
+			 // evalutate the variables from 14:0
+			 flag = 0; // set if invalid soln
+			 for( int idx = 14; idx >= 0; idx++ ) begin
+				if( bclass[idx] == 3 ) begin // evaluate
+					dot_div = A[bypos[idx]][bxpos[idx]];
+					dot_sum = A[bypos][15]; // =b
+					for( int xx = bxpos[idx]+1; xx < 15; xx++ )
+						dot_sum -= A[bypos][xx] * V[xx];
+				end
+				if( dot_div == 0 ) $display("Infinite Button");
+				if( dot_sum % dot_div != 0 ) $display("Frac Button");
+				if( dot_sum / dot_div < 0 ) $display("Neg Button");
+				if( dot_sum % dot_div == 0 && dot_sum / dot_div >= 0 ) 
+				 	V[idx] = dot_sum / dot_div;
+				else 
+					flag = 1;
+			 end
+			 // Count Button presses
+			if( flag == 0 ) begin
+		 		count = 0;
+				for( int idx = 0; idx < 15; idx++ )
+					count += V[idx];
+				min_count = ( count < min_count ) ? count : min_count;
+			end
+
+			// step to next dependant
+			depc[0] <= ( ni < 1 ) ? 0 : ( depc[0] == max_jolt ) ? 0 : depc[1]+1;
+			depc[1] <= ( ni < 2 ) ? 0 : ( depc[0] == max_jolt ) ? (( depc[1] == max_jolt ) ? 0 : depc[1] + 1): depc[1];
+			depc[2] <= ( ni < 3 ) ? 0 : ( depc[0] == max_jolt && depc[1] == max_jolt ) ? depc[2] + 1: depc[2];
+		end
+
+
+
+
+		// Statistics
 		// Update COeff min/max
         	$display("Classificatin: %0h", bclass );
 		$display("ND %d NI %d, NZ %d", nd, ni, nz );
@@ -370,7 +428,6 @@ module aoc_day10 (
 
 	// Counter, shifts in 1's with each button, and then count down to
 	// zero
-	logic [15:0] count;
 	always_ff @(posedge clk) 
 		count <= ( reset ) ? 0 : 
 	                 ( ( wvalid && wready && wuser[1] ) ) ? { count[14:0], 1'b1 } :
