@@ -249,9 +249,9 @@ module aoc_day10 (
 	integer flag;
 	logic signed [14:0][63:0] V;
 	logic [2:0][8:0] depc;
-	integer count, min_count;
+	logic [63:0] count, min_count;
 	logic [14:0][3:0] bxpos, bypos;
-	logic [63:0] dot_div, dot_sum;
+	logic signed [63:0] dot_div, dot_sum;
 	initial begin
 	    min_A = 0; max_A = 0;
 	    max_ni = 0; max_nd = 0; max_nz = 0;
@@ -268,9 +268,9 @@ module aoc_day10 (
 			end
 		end
 		// dump matrix
-		//for( int yy = 0; yy < 10; yy++ ) 
-		//		$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
-		//			A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
+		for( int yy = 0; yy < 10; yy++ ) 
+				$display("%3d %3d %3d %3d %3d | %3d %3d %3d %3d %3d | %3d %3d %3d %3d %3d ||  %5d", 
+					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
 		// itterate and reduce
 		X=0; Y=0;
 		flag = 0;
@@ -314,7 +314,7 @@ module aoc_day10 (
 		// dump matrix
 		$display("[%d X %d] Triangular Matrix", buttons, jolts);
 		for( int yy = 0; yy < 10; yy++ ) 
-				$display("%d %d %d %d %d | %d %d %d %d %d | %d %d %d %d %d ||  %d", 
+				$display("%3d %3d %3d %3d %3d | %3d %3d %3d %3d %3d | %3d %3d %3d %3d %3d ||  %5d", 
 					A[yy][0], A[yy][1],A[yy][2],A[yy][3],A[yy][4],A[yy][5],A[yy][6],A[yy][7],A[yy][8],A[yy][9],A[yy][10],A[yy][11],A[yy][12],A[yy][13],A[yy][14],A[yy][15] );
 
 		// Now walk diagonal and classify each variable 
@@ -347,51 +347,66 @@ module aoc_day10 (
 			nz = ( flag ) ? nz : nz+1;
 			ni = ( flag ) ? ni+1: ni;
 		end
+		$display("Bclass %h", bclass );
 		
 		// Generating indpendant and evaluating dependants
 		V[14:0] = 0; // zero all variables at start
 		depc = 0; // zero independant varaibles upon which others depend
+		min_count = -1;
 		// Solve at 
-		while(  ni == 0 || 
+		//$display("NI %d" , ni );
+		$display("NI %0d, Max %0d", ni, max_jolt);
+		while(  ni == 0 && depc[0] == 0 || // single solution
 			ni == 1 && depc[0] < max_jolt || 
 			ni == 2 && depc[0] < max_jolt && depc[1] < max_jolt ||
 			ni == 3 && depc[0] < max_jolt && depc[1] < max_jolt && depc[2] < max_jolt ) begin
+			//$display("NI %0d, Max %0d, DEP[0] = %3d DEP[1] = %3d DEP[2] = %3d", ni, max_jolt, depc[0], depc[1], depc[2] );
+			// Zero V
+			V = 0;
 			// walk the list and insert independant varaibles // firstk
 			count = 0;
 			for( int idx = 0; idx < 15; idx++ )
 				if( bclass[idx] == 2 ) 
 					V[idx] = depc[count++];
-
-			 // evalutate the variables from 14:0
-			 flag = 0; // set if invalid soln
-			 for( int idx = 14; idx >= 0; idx++ ) begin
+			//$display("V=[trial] = %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d ]",   //////////////////////
+			//	V[0],V[1],V[2],V[3],V[4],V[5],V[6],V[7],V[8],V[9],V[10],V[11],V[12],V[13],V[14]); ////////////////
+			// evalutate the variables from 14:0
+			flag = 0; // set if invalid soln
+			for( int idx = 14; idx >= 0; idx-- ) begin
 				if( bclass[idx] == 3 ) begin // evaluate
 					dot_div = A[bypos[idx]][bxpos[idx]];
 					dot_sum = A[bypos][15]; // =b
 					for( int xx = bxpos[idx]+1; xx < 15; xx++ )
 						dot_sum -= A[bypos][xx] * V[xx];
+				//if( dot_div == 0 ) $display("Infinite Button");
+				//if( dot_sum % dot_div != 0 ) $display("Frac Button");
+				//if( dot_sum / dot_div < 0 ) $display("Neg Button");
+					if( dot_sum % dot_div != 0 || dot_sum / dot_div < 0 ) 
+						flag = 1;
+					V[idx] = dot_sum / dot_div;
 				end
-				if( dot_div == 0 ) $display("Infinite Button");
-				if( dot_sum % dot_div != 0 ) $display("Frac Button");
-				if( dot_sum / dot_div < 0 ) $display("Neg Button");
-				if( dot_sum % dot_div == 0 && dot_sum / dot_div >= 0 ) 
-				 	V[idx] = dot_sum / dot_div;
-				else 
-					flag = 1;
-			 end
-			 // Count Button presses
+			//$display("V[%2d] = %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d ]",idx,   //////////////////////
+			//	V[0],V[1],V[2],V[3],V[4],V[5],V[6],V[7],V[8],V[9],V[10],V[11],V[12],V[13],V[14]); ////////////////
+			end
+			$display("V[solve] = [ %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d ] %0d",   //////////////////////
+				V[0],V[1],V[2],V[3],V[4],V[5],V[6],V[7],V[8],V[9],V[10],V[11],V[12],V[13],V[14], flag); ////////////////
+
+			// Count Button presses
 			if( flag == 0 ) begin
 		 		count = 0;
 				for( int idx = 0; idx < 15; idx++ )
 					count += V[idx];
+				//$display("min_count %0d count %0d ",min_count, count );
 				min_count = ( count < min_count ) ? count : min_count;
 			end
+			
 
 			// step to next dependant
-			depc[0] <= ( ni < 1 ) ? 0 : ( depc[0] == max_jolt ) ? 0 : depc[1]+1;
-			depc[1] <= ( ni < 2 ) ? 0 : ( depc[0] == max_jolt ) ? (( depc[1] == max_jolt ) ? 0 : depc[1] + 1): depc[1];
-			depc[2] <= ( ni < 3 ) ? 0 : ( depc[0] == max_jolt && depc[1] == max_jolt ) ? depc[2] + 1: depc[2];
+			depc[2] = ( ni ==  3 && depc[0] == max_jolt && depc[1] == max_jolt ) ? depc[2] + 1: depc[2];
+			depc[1] = ( ni >=  2 && depc[0] == max_jolt ) ? (( depc[1] == max_jolt ) ? 0 : depc[1] + 1): depc[1];
+			depc[0] = ( depc[0] == max_jolt ) ? 0 : depc[0]+1;
 		end
+		$display("min_count %0d ",min_count);
 
 
 
@@ -399,9 +414,9 @@ module aoc_day10 (
 		// Statistics
 		// Update COeff min/max
         	$display("Classificatin: %0h", bclass );
-		$display("ND %d NI %d, NZ %d", nd, ni, nz );
+		$display("ND %0d NI %0d, NZ %0d", nd, ni, nz );
 		if( nd + ni + nz != 15 )
-			$display("ASSERT total [%d] must be 15", nd + ni + nz );
+			$display("ASSERT total [%0d] must be 15", nd + ni + nz );
 		// Do some min/maxes so we can see the ranges 
 		for( int xx = 0; xx < 16; xx++ ) begin
 			for( int yy = 0; yy < 10; yy++ ) begin
@@ -415,7 +430,7 @@ module aoc_day10 (
 	    	if( ni < min_ni ) min_ni = ni;
 	    	if( nd < min_nd ) min_nd = nd;
 	    	if( nz < min_nz ) min_nz = nz;
-		$display("MIN/MAX ni %d/%d nd %d/%d nz %d/%d A%d/%d", min_ni, max_ni, min_nd, max_nd, min_nz, max_nz, min_A, max_A );
+		$display("MIN/MAX ni %0d/%0d nd %0d/%0d nz %0d/%0d A%0d/%0d", min_ni, max_ni, min_nd, max_nd, min_nz, max_nz, min_A, max_A );
 	    end
 
 	    @( negedge clk);
