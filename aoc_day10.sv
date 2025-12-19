@@ -249,13 +249,14 @@ module aoc_day10 (
 	integer flag;
 	logic signed [14:0][63:0] V;
 	logic [2:0][8:0] depc;
-	logic [63:0] count, min_count;
+	logic [63:0] count, min_count, sum_min_count;
 	logic [14:0][3:0] bxpos, bypos;
 	logic signed [63:0] dot_div, dot_sum;
 	initial begin
 	    min_A = 0; max_A = 0;
 	    max_ni = 0; max_nd = 0; max_nz = 0;
 	    min_ni = 15; min_nd = 15; min_nz = 15;
+	    sum_min_count = 0;
    	    for( int count = 0; 1 ; count++ ) begin
 		while( !(  wvalid && wready && wuser[2:0]==4 && wlast ) ) @(negedge clk); // wait for end of line
 		$display("EQN %d", count );
@@ -357,9 +358,9 @@ module aoc_day10 (
 		//$display("NI %d" , ni );
 		$display("NI %0d, Max %0d", ni, max_jolt);
 		while(  ni == 0 && depc[0] == 0 || // single solution
-			ni == 1 && depc[0] < max_jolt || 
-			ni == 2 && depc[0] < max_jolt && depc[1] < max_jolt ||
-			ni == 3 && depc[0] < max_jolt && depc[1] < max_jolt && depc[2] < max_jolt ) begin
+			ni == 1 && depc[0] <= max_jolt || 
+			ni == 2 && depc[0] <= max_jolt && depc[1] <= max_jolt ||
+			ni == 3 && depc[0] <= max_jolt && depc[1] <= max_jolt && depc[2] <= max_jolt ) begin
 			//$display("NI %0d, Max %0d, DEP[0] = %3d DEP[1] = %3d DEP[2] = %3d", ni, max_jolt, depc[0], depc[1], depc[2] );
 			// Zero V
 			V = 0;
@@ -375,9 +376,9 @@ module aoc_day10 (
 			for( int idx = 14; idx >= 0; idx-- ) begin
 				if( bclass[idx] == 3 ) begin // evaluate
 					dot_div = A[bypos[idx]][bxpos[idx]];
-					dot_sum = A[bypos][15]; // =b
+					dot_sum = A[bypos[idx]][15]; // =b
 					for( int xx = bxpos[idx]+1; xx < 15; xx++ )
-						dot_sum -= A[bypos][xx] * V[xx];
+						dot_sum -= A[bypos[idx]][xx] * V[xx];
 				//if( dot_div == 0 ) $display("Infinite Button");
 				//if( dot_sum % dot_div != 0 ) $display("Frac Button");
 				//if( dot_sum / dot_div < 0 ) $display("Neg Button");
@@ -388,6 +389,7 @@ module aoc_day10 (
 			//$display("V[%2d] = %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d ]",idx,   //////////////////////
 			//	V[0],V[1],V[2],V[3],V[4],V[5],V[6],V[7],V[8],V[9],V[10],V[11],V[12],V[13],V[14]); ////////////////
 			end
+			if( !flag )
 			$display("V[solve] = [ %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d ] %0d",   //////////////////////
 				V[0],V[1],V[2],V[3],V[4],V[5],V[6],V[7],V[8],V[9],V[10],V[11],V[12],V[13],V[14], flag); ////////////////
 
@@ -402,14 +404,13 @@ module aoc_day10 (
 			
 
 			// step to next dependant
-			depc[2] = ( ni ==  3 && depc[0] == max_jolt && depc[1] == max_jolt ) ? depc[2] + 1: depc[2];
-			depc[1] = ( ni >=  2 && depc[0] == max_jolt ) ? (( depc[1] == max_jolt ) ? 0 : depc[1] + 1): depc[1];
-			depc[0] = ( depc[0] == max_jolt ) ? 0 : depc[0]+1;
+			depc[2] = ( ni ==3 && depc[0] == max_jolt && depc[1] == max_jolt ) ? depc[2]+1: depc[2];
+			depc[1] = ( ni > 2 && depc[0] == max_jolt && depc[1] == max_jolt ) ? 0 : ( depc[0] == max_jolt ) ? depc[1]+1 : depc[1];
+			depc[0] = ( ni > 1 && depc[0] == max_jolt ) ? 0 : depc[0]+1;
 		end
 		$display("min_count %0d ",min_count);
-
-
-
+		sum_min_count += min_count;
+		$display("sum_min_count %0d ",sum_min_count);	// Part 2 answer
 
 		// Statistics
 		// Update COeff min/max
