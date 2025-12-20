@@ -474,7 +474,10 @@ module aoc_day10 (
 	                ( ( !count[ 6] ) ? 0 : button[ 6] ) ^
 	                ( ( !count[ 7] ) ? 0 : button[ 7] ) ^
 	                ( ( !count[ 8] ) ? 0 : button[ 8] ) ^
-	                ( ( !count[ 9] ) ? 0 : button[ 9] ) ;
+	                ( ( !count[ 9] ) ? 0 : button[ 9] ) ^
+	                ( ( !count[10] ) ? 0 : button[10] ) ^
+	                ( ( !count[11] ) ? 0 : button[11] ) ^
+	                ( ( !count[12] ) ? 0 : button[12] ) ;
 
 	// some monitor registers
 	logic [9:0] lights_reg;
