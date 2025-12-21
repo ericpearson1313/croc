@@ -517,3 +517,97 @@ module aoc_day10 (
 		sum2 <= ( reset ) ? 0 : ( wvalid && wlast ) ? sum2 + 1 : sum2;
 
 endmodule
+
+// synthesizable, combinatorial, solver
+module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
+	input  logic [0: 9][0:12] a_in,	  // A[10][13] fo binary dayat
+	input  logic [0: 9][8: 0] bb_in,  // b[10] of target data
+	output logic [0:13][8: 0] x_out,  // x[13] outputs
+	output logic              posint, // flag if x_out is all positive integers
+	output logic [1: 0]   	  nind,	  // num independant variables
+	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs
+	);
+
+	// format input data into arrays
+	//           Stage row  col  signed
+
+	logic signed [0:10][0:9][0:13][63:0] A;
+	// Unrolled Row=0 to 9, Gaussian ellimination
+	// - Find 1st significant coeff (step and roll)
+	// - Reduce non-zero coeff below significnt to zero
+	// 10th stage will be in eschelon form (upper triangular)
+	logic [20:0][3:0] sig_row;
+	logic [20:0][0:12][9:0] nz;
+	logic [20:0][3:0] X, Y;
+	always_comb begin // Flag significant columns
+	   // format first row for input
+	   for( yy = 0; yy < 10; yy++ ) begin
+		   A[0][yy][13] = b[yy];
+		   for( int xx = 0; xx < 13; xx++ )
+			   A[0][yy][xx] = ain[yy][xx];
+	   end
+	   // Start in upper left corner
+	   X[0] = 0; Y[0] = 0;
+	   for( int k = 1; k <= 20; k++ ) begin
+		if( k & 1 ) begin // odd: 
+			// find 1st significant coeff row
+			for( int xx = 0; xx < 13; xx++ ) begin
+				for( int yy = 0; yy < 10; yy++ ) // find sig cells and format for col reduction OR
+					nz[k][xx][yy] = ( A[k-1][yy][xx] != 0 && xx >= X[k-1] && yy >= Y[k-1] ) ? 1'b1 : 1'b0;
+			end
+			// Update to next sig working column
+			Y[k] = Y[k-1];
+			X[k] =  ( |nz[k][ 0] ) ?  0 : ( |nz[k][ 1] ) ?  1 : ( |nz[k][ 2] ) ?  2 : ( |nz[k][ 3] ) ?  3 :
+				( |nz[k][ 4] ) ?  4 : ( |nz[k][ 5] ) ?  5 : ( |nz[k][ 6] ) ?  6 : ( |nz[k][ 7] ) ?  7 :
+				( |nz[k][ 8] ) ?  8 : ( |nz[k][ 9] ) ?  9 : ( |nz[k][10] ) ? 10 : ( |nz[k][11] ) ? 11 :
+				( |nz[k][12] ) ? 12 : 15;
+			// find sig row to roll into place
+			sig_row[k] = nz[k][X[k]][0] ? 0 : nz[k][X[k]][1] ? 1 : nz[k][X[k]][2] ? 2 :
+				     nz[k][X[k]][3] ? 3 : nz[k][X[k]][4] ? 4 : nz[k][X[k]][5] ? 5 :
+				     nz[k][X[k]][6] ? 6 : nz[k][X[k]][7] ? 7 : nz[k][X[k]][8] ? 8 : 15 ;
+			// barrel roll row into place
+			for( int yy = 0; yy < 10; yy++ ) begin
+				if( yy < Y[k] ) begin
+				  	A[k][yy] = A[k-1][yy]; // not involved, just copy
+				end else if( yy >= Y[k] && yy-Y[k]+sig_row < 10 ) begin
+					A[k][yy] = A[k-1][yy-Y[k]+sig_row[k]];
+				end else begin
+					A[k][yy] = A[k-1][yy+sig_row[k]-10];
+				end
+			end
+
+		end else begin // Even K
+			
+			// Gausion ellimination on even k
+			for( int yy = 0; yy < 9; yy++ ) begin
+				if( yy < Y[k-1] || A[k-1][yy][X[k-1]] == 0 ) begin // above us, or already a zero/reduced
+					A[k][yy] = A[k-1][yy];
+				end else for( int xx = 0; xx < 14; xx++ ) begin // reducde
+					A[k][yy][xx] = ( xx <= X[k-1] ) ? 0 : A[k-1][yy][X[k-1]] * A[k-1][0][xx] - A[k-1][0][X[k-1]] * A[k-1][yy][xx];
+				end
+			end
+			X[k] = X[k-1] + 1;
+			Y[k] = X[k-1] + 1;
+	        end // Even
+	    end // k
+	end // always
+	
+
+
+	
+	logic signed [0:12][63:0] V; // solution X
+	// Prepart to solve by
+	// - inserting known zero's into x
+	// - signalling how many independant variables are needed
+	// - inserting independants into x
+	
+	logic signed [0:12][63:0] Vdiv; // solution X = V/Vdiv
+	// Unrolled loop per col=12 down to zero
+	// - solve for V, and retain divisor Vdiv
+	
+	// Do the 13 divisisions, track each if -ve or non-integer
+	
+endmodule
+
+
+	
