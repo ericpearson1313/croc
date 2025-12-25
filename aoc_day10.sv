@@ -519,13 +519,14 @@ module aoc_day10 (
 endmodule
 
 // synthesizable, combinatorial, solver
+// targets day 10 part 2
 module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	input  logic [0: 9][0:12] a_in,	  // A[10][13] fo binary dayat
-	input  logic [0: 9][8: 0] bb_in,  // b[10] of target data
-	output logic [0:13][8: 0] x_out,  // x[13] outputs
-	output logic              posint, // flag if x_out is all positive integers
-	output logic [1: 0]   	  nind,	  // num independant variables
-	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs
+	input  logic [0: 9][8: 0] b_in,   // b[10] of target data
+	output logic [0:13][8: 0] x_out,  // x[13] soluion outputs
+	output logic              posint, // flag if x_out are all positive integers
+	output logic [1: 0]   	  nind,	  // num independant variables ranges from 0 to 3
+	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs using [nind:0] 
 	);
 
 	// format input data into arrays
@@ -536,21 +537,21 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	// - Find 1st significant coeff (step and roll)
 	// - Reduce non-zero coeff below significnt to zero
 	// 10th stage will be in eschelon form (upper triangular)
-	logic [20:0][3:0] sig_row;
+	logic [20:0][3:0] sig_row, sig_col;
 	logic [20:0][0:12][9:0] nz;
 	logic [20:0][3:0] X, Y;
 	always_comb begin // Flag significant columns
-	   // format first row for input
+	   // K == 0 init from inputs
 	   for( yy = 0; yy < 10; yy++ ) begin
-		   A[0][yy][13] = b[yy];
+		   A[0][yy][13] = b_in[yy];
 		   for( int xx = 0; xx < 13; xx++ )
-			   A[0][yy][xx] = ain[yy][xx];
+			   A[0][yy][xx] = a_in[yy][xx];
 	   end
 	   // Start in upper left corner
 	   X[0] = 0; Y[0] = 0;
 	   for( int k = 1; k <= 20; k++ ) begin
-		if( k & 1 ) begin // odd: 
-			// find 1st significant coeff row
+		if( k & 1 ) begin // Odd k: 
+			// find 1st significant coeff column
 			for( int xx = 0; xx < 13; xx++ ) begin
 				for( int yy = 0; yy < 10; yy++ ) // find sig cells and format for col reduction OR
 					nz[k][xx][yy] = ( A[k-1][yy][xx] != 0 && xx >= X[k-1] && yy >= Y[k-1] ) ? 1'b1 : 1'b0;
@@ -560,12 +561,12 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 			X[k] =  ( |nz[k][ 0] ) ?  0 : ( |nz[k][ 1] ) ?  1 : ( |nz[k][ 2] ) ?  2 : ( |nz[k][ 3] ) ?  3 :
 				( |nz[k][ 4] ) ?  4 : ( |nz[k][ 5] ) ?  5 : ( |nz[k][ 6] ) ?  6 : ( |nz[k][ 7] ) ?  7 :
 				( |nz[k][ 8] ) ?  8 : ( |nz[k][ 9] ) ?  9 : ( |nz[k][10] ) ? 10 : ( |nz[k][11] ) ? 11 :
-				( |nz[k][12] ) ? 12 : 15;
-			// find sig row to roll into place
+			( |nz[k][12] ) ? 12 : 15;
+			// find sig row in the sig col
 			sig_row[k] = nz[k][X[k]][0] ? 0 : nz[k][X[k]][1] ? 1 : nz[k][X[k]][2] ? 2 :
 				     nz[k][X[k]][3] ? 3 : nz[k][X[k]][4] ? 4 : nz[k][X[k]][5] ? 5 :
 				     nz[k][X[k]][6] ? 6 : nz[k][X[k]][7] ? 7 : nz[k][X[k]][8] ? 8 : 15 ;
-			// barrel roll row into place
+			// barrel shift row into place
 			for( int yy = 0; yy < 10; yy++ ) begin
 				if( yy < Y[k] ) begin
 				  	A[k][yy] = A[k-1][yy]; // not involved, just copy
@@ -590,6 +591,8 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 			Y[k] = X[k-1] + 1;
 	        end // Even
 	    end // k
+	    // A[20] is in eschelon order
+	    // x[2*k
 	end // always
 	
 
