@@ -162,7 +162,7 @@ module day5_part2 (
 	output logic            rvalid
 	);
 
-	localparam MAX = 5;//200;
+	localparam MAX = 200;
 	// Upper and lower shift regs
 	logic [MAX-1:0][1:0][63:0] range;  // buffers to ranges. An ordered non-overlapping list of ranges
 	logic [MAX-1:0]      [1:0] rs; 	   // State of range cells
