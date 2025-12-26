@@ -521,22 +521,25 @@ endmodule
 // synthesizable, combinatorial, solver
 // targets day 10 part 2
 module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
-	input  logic [0: 9][0:12] a_in,	  // A[10][13] fo binary dayat
-	input  logic [0: 9][8: 0] b_in,   // b[10] of target data
-	output logic [0:13][8: 0] x_out,  // x[13] soluion outputs
+	input  logic [9: 0][12:0] a_in,	  // A[10][13] fo binary dayat
+	input  logic [9: 0][8: 0] b_in,   // b[10] of target data
+	output logic [12:0][8: 0] x_out,  // x[13] soluion outputs
+	output logic [12:0]       x_sum,  // sum of the x[] array
 	output logic              posint, // flag if x_out are all positive integers
 	output logic [1: 0]   	  nind,	  // num independant variables ranges from 0 to 3
 	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs using [nind:0] 
 	);
 
 	// format input data into arrays
-	//           Stage row  col  signed
 
-	logic signed [0:10][0:9][0:13][63:0] A;
-	// Unrolled Row=0 to 9, Gaussian ellimination
-	// - Find 1st significant coeff (step and roll)
-	// - Reduce non-zero coeff below significnt to zero
-	// 10th stage will be in eschelon form (upper triangular)
+
+	// Unrolled Gaussian ellimination
+	// 0th stage is input
+	// Odd - Find 1st significant coeff (step and roll)
+	// Even - Reduce non-zero coeff below significnt to zero
+	// 20th stage will be in eschelon form (upper triangular)
+	//           Stage row  col  signed
+	logic signed [0:20][0:9][0:13][63:0] A;
 	logic [20:0][3:0] sig_row, sig_col;
 	logic [20:0][0:12][9:0] nz;
 	logic [20:0][3:0] X, Y;
@@ -550,7 +553,9 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	   // Start in upper left corner
 	   X[0] = 0; Y[0] = 0;
 	   for( int k = 1; k <= 20; k++ ) begin
-		if( k & 1 ) begin // Odd k: 
+
+		if( k & 1 ) begin // Odd K:
+
 			// find 1st significant coeff column
 			for( int xx = 0; xx < 13; xx++ ) begin
 				for( int yy = 0; yy < 10; yy++ ) // find sig cells and format for col reduction OR
@@ -595,21 +600,109 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	    // x[2*k
 	end // always
 	
+	// Build Solve array & Map out the non-zero rows and columns
+	logic [9:0][13:0][63:0] S; 
+	logic [9:0][12:0] map_r;
+	logic [12:0][9:0] map_c;
+	logic [9:0][12:0] mul_r; // Flags all cells after 1st sig in a row
+	logic [9:0][12:0] piv_r; // Flags flags first non-zero in a row
+	logic [12:0][9:0] piv_c; 
+	always_comb begin
+		for( int yy = 0; yy < 9; yy++ ) begin
+			for( int xx = 0; xx < 12; xx++ ) begin
+				S[yy][xx] = ( xx < yy ) ? 0 : A[20][yy][xx];
+				map_c[xx][yy] = ( S[yy][xx] != 0 ) ? 1'b1 : 1'b0;
+				map_r[yy][xx] = map_c[xx][yy];
+				mul_r[yy][xx] = ( xx == 0 ) ? 0 : map_r[yy][xx-1] | mul_r[yy][xx-1];
+				piv_r[yy][xx] = piv_c[xx][yy];
+				piv_c[xx][yy] = map_r[yy][cc] & !mul_r[yy][xx];
+			end
+		end
+	end
 
-
+	// calculate right hand side per row (b - sum of products);
+	logic [9:0][63:0] sum_prod;
+	logic [9:0][63:0] pivot;
+	always_comb begin
+		for( int yy = 9; yy >= 0; yy-- ) begin // bot up loop
+			sum_prod[yy] = S[yy][13] -
+				      ((( mul_r[yy][ 1] ) ? S[yy][ 1] * V[ 1] : 0 ) +
+			               (( mul_r[yy][ 2] ) ? S[yy][ 2] * V[ 2] : 0 ) +
+			               (( mul_r[yy][ 3] ) ? S[yy][ 3] * V[ 3] : 0 ) +
+			               (( mul_r[yy][ 4] ) ? S[yy][ 4] * V[ 4] : 0 ) +
+			               (( mul_r[yy][ 5] ) ? S[yy][ 5] * V[ 5] : 0 ) +
+			               (( mul_r[yy][ 6] ) ? S[yy][ 6] * V[ 6] : 0 ) +
+			               (( mul_r[yy][ 7] ) ? S[yy][ 7] * V[ 7] : 0 ) +
+			               (( mul_r[yy][ 8] ) ? S[yy][ 8] * V[ 8] : 0 ) +
+			               (( mul_r[yy][ 9] ) ? S[yy][ 9] * V[ 9] : 0 ) +
+			               (( mul_r[yy][10] ) ? S[yy][10] * V[10] : 0 ) +
+			               (( mul_r[yy][11] ) ? S[yy][11] * V[11] : 0 ) +
+			               (( mul_r[yy][12] ) ? S[yy][12] * V[12] : 0 ));
+			pivot[yy] =    (( piv_r[yy][ 0] ) ? S[yy][ 0] : 0 ) | // Select mux
+			               (( piv_r[yy][ 1] ) ? S[yy][ 1] : 0 ) |
+			               (( piv_r[yy][ 2] ) ? S[yy][ 2] : 0 ) |
+			               (( piv_r[yy][ 3] ) ? S[yy][ 3] : 0 ) |
+			               (( piv_r[yy][ 4] ) ? S[yy][ 4] : 0 ) |
+			               (( piv_r[yy][ 5] ) ? S[yy][ 5] : 0 ) |
+			               (( piv_r[yy][ 6] ) ? S[yy][ 6] : 0 ) |
+			               (( piv_r[yy][ 7] ) ? S[yy][ 7] : 0 ) |
+			               (( piv_r[yy][ 8] ) ? S[yy][ 8] : 0 ) |
+			               (( piv_r[yy][ 9] ) ? S[yy][ 9] : 0 ) |
+			               (( piv_r[yy][10] ) ? S[yy][10] : 0 ) |
+			               (( piv_r[yy][11] ) ? S[yy][11] : 0 ) |
+			               (( piv_r[yy][12] ) ? S[yy][12] : 0 ) ;
+		end
+	end
+			
+	// do row divides Vrow = sum_prod / pivot, and check all for neg_frac
+	logic [9:0][8:0] row_result; // output is unsigned 9 bit pos int unless flagged
+	logic [9:0]       neg_frac;	
+	day10_div i_div0( .num( sum_prod[0]), .denom( pivot[0] ), .out( row_result[0] ), .neg_frac( neg_frac[0] ) );
+	day10_div i_div1( .num( sum_prod[1]), .denom( pivot[1] ), .out( row_result[1] ), .neg_frac( neg_frac[1] ) );
+	day10_div i_div2( .num( sum_prod[2]), .denom( pivot[2] ), .out( row_result[2] ), .neg_frac( neg_frac[2] ) );
+	day10_div i_div3( .num( sum_prod[3]), .denom( pivot[3] ), .out( row_result[3] ), .neg_frac( neg_frac[3] ) );
+	day10_div i_div4( .num( sum_prod[4]), .denom( pivot[4] ), .out( row_result[4] ), .neg_frac( neg_frac[4] ) );
+	day10_div i_div5( .num( sum_prod[5]), .denom( pivot[5] ), .out( row_result[5] ), .neg_frac( neg_frac[5] ) );
+	day10_div i_div6( .num( sum_prod[6]), .denom( pivot[6] ), .out( row_result[6] ), .neg_frac( neg_frac[6] ) );
+	day10_div i_div7( .num( sum_prod[7]), .denom( pivot[7] ), .out( row_result[7] ), .neg_frac( neg_frac[7] ) );
+	day10_div i_div8( .num( sum_prod[8]), .denom( pivot[8] ), .out( row_result[8] ), .neg_frac( neg_frac[8] ) );
+	day10_div i_div9( .num( sum_prod[9]), .denom( pivot[9] ), .out( row_result[9] ), .neg_frac( neg_frac[9] ) );
+	assign posint = !|neg_frac; // flag if solution will be positive integers
 	
-	logic signed [0:12][63:0] V; // solution X
+	// Pivot Row results into columns
+
+	// Build V with each element = mux14(  row[0..9], zero, dep[0..2] );
+	// for column xx, 
+	// if col[xx] contains a pivot |piv_c[xx] then v[xx] is reflected result
+	// if col[xx] is all zero, then v[xx] = 0
+	// else V is an its a independant input
+	
+
+
+	logic signed [0:12][8:0] V; // solution X
 	// Prepart to solve by
 	// - inserting known zero's into x
 	// - signalling how many independant variables are needed
 	// - inserting independants into x
 	
-	logic signed [0:12][63:0] Vdiv; // solution X = V/Vdiv
-	// Unrolled loop per col=12 down to zero
-	// - solve for V, and retain divisor Vdiv
+
+	// Output data and flag
+	assign sum_x = v[0]+v[1]+v[2]+v[3]+v[4]+v[5]+v[6]+v[7]+v[8]+v[9]+v[10]+v[11]+v[12];
+	assign x_out = V;
+	assign posint = !|neg_frac; 
+
+
 	
-	// Do the 13 divisisions, track each if -ve or non-integer
 	
+endmodule
+
+module day10_div (
+	input logic [63:0] num,
+	input logic [63:0] denom,
+	output logic [8:0] out,
+	output logic neg_frac
+	);
+	// Out = num / denom. Assert neg_frac if result is neg has remainder 
 endmodule
 
 
