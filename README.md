@@ -33,7 +33,24 @@ when run the puzzle sum is computed based on the puzzle data. The testbench read
     - Verilator: $finish at 62us; walltime 0.023 s; speed 2.695 ms/s
     - Verilator: cpu 0.023 s on 1 threads; alloced 31 MB
 
-Done for now .... i'll need to think about how to solve part 2. Maybe later
+## Day 5 part 2
+
+Added a 2nd synthesiable module to calculate part 2. It had an axi like interface to accept range pairs as write data. I then had 2 large ranks of registers
+and did a merge sort by shifting the input ranges along a deep (200) register array which would do a merge sort with each cell as it passes. When done the shift registers would be loaded with a sum command which would cause the range values to be forwarded and summed at the end. So we are doing a O(NxN) merge sort,
+but in O(N) time because we have N computational units. This can only be done for bounded N cases.
+
+       day5_part2 i_dut_part2 (
+                .clk ( clk ),
+                .reset( reset ),
+                .wdata( wdata ),
+                .wvalid( wvalid ),
+                .wready( wready ),
+                .wlast( wlast ),
+                .rdata( rdata ),
+                .rvalid( rvalid )
+        );
+
+
 
 ## Day 6 - Part 1 & 2
 
