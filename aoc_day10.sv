@@ -34,6 +34,7 @@ module day10_tb();
         	$timeformat(-9, 0, "ns", 12); // 1: scale (ns=-9), 2: decimals, 3: suffix, 4: print-field width
         	$dumpfile("day10.fst");
         	$dumpvars(1,i_day10);
+        	$dumpvars(1,i_day10_g);
         end
 	
 
@@ -174,20 +175,157 @@ module day10_tb();
 	end // initial
 
 	// Instantiate day 10 synthesizable verilog 
+	// includes a beavioral part 2
+	
+	logic wready1, wready2;
+	assign wready = wready1 & wready2;
 	aoc_day10 i_day10 (
 		.clk	( clk ),
 		.reset	( reset ),
-		.wvalid	( wvalid ),
-		.wready	( wready ),
+		.wvalid	( wvalid & wready ),
+		.wready	( wready1 ),
 		.wdata 	( wdata  ),
 		.wuser 	( wuser  ),
 		.wlast 	( wlast  ),
 		.sum1   ( sum1 ),
-		.sum2   ( sum2 )
+		.sum2   ( )
 	);
+
+	// Instantiate fully synthesizable gaussian solver for part 2 (could also do part 1)
+	logic [31:0] sum1g;
+	logic [63:0] sum2g;
+	aoc_day10_gaussian i_day10_g (
+		.clk	( clk ),
+		.reset	( reset ),
+		.wvalid	( wvalid & wready ),
+		.wready ( wready2 ),
+		.wdata 	( wdata  ),
+		.wuser 	( wuser  ),
+		.wlast 	( wlast  ),
+		.sum2   ( sum2   )
+	);
+	
 endmodule
 
 
+// Uses a synthesizable 13x10 solver for day10 part 1 and part 2 solutions
+module aoc_day10_gaussian (
+	input logic clk,
+	input logic reset,
+	input logic wvalid,
+	input logic wlast,
+	input logic [2:0] wuser,
+	input logic [15:0] wdata,
+	output logic wready,
+	output logic [63:0] sum2
+	);
+
+	//assign wready = 1;
+	//assign sum2 = 64'hABCDEF0123456789;
+
+	/////////////////
+	// Shift In data
+	/////////////////
+
+	// load button data (a_in)
+	logic [9: 0][12:0] buttons;
+	logic [3:0] bcnt;
+	always_ff @(posedge clk) begin
+		if( reset || wvalid && wready && wuser == 7 ) begin
+			buttons <= 0;
+			bcnt <= 0;
+		end else if( wvalid && wready && wuser == 2 ) begin
+			bcnt <= bcnt + 1;
+			for( int yy = 0; yy < 10; yy++ ) begin
+				buttons[yy][bcnt] <= wdata[yy];
+			end
+		end
+	end
+
+	// load Joltage data
+	logic [9:0][8:0] joltage;
+	logic [3:0] jcnt;
+	logic [8:0] max_jolts;
+	always_ff @(posedge clk) begin
+		if( reset || wvalid && wready && wuser == 7 ) begin
+			joltage <= 0;
+			jcnt <= 0;
+			max_jolts <= 0;
+		end else if ( wvalid && wready && wuser == 4 ) begin
+			jcnt <= jcnt + 1;
+			max_jolts <= ( wdata[8:0] > max_jolts ) ? wdata[8:0] : max_jolts;
+			joltage[jcnt] <= wdata[8:0];
+		end
+	end
+
+	/////////////////
+	// Find best soln
+	/////////////////
+	
+	// Start pulse after last write
+	logic start;
+	logic start_d; // input regs valid
+	assign start = ( wvalid && wready && wlast && wuser == 4 ) ? 1'b1 : 1'b0;
+	always @(posedge clk)
+		start_d <= start;
+	
+	// Done when we've itterated any/all indpendant variables
+	logic [1:0] num_ind; // number of independant variables (from solver )
+	logic [2:0][8:0] ind;
+	logic done;
+	assign done = ( num_ind == 0 ||
+                        num_ind == 1 && ind[0] == max_jolts ||
+                        num_ind == 2 && ind[0] == max_jolts && ind[1] == max_jolts ||
+                        num_ind == 3 && ind[0] == max_jolts && ind[1] == max_jolts && ind[2] == max_jolts ) ? 1'b1: 1'b0;
+
+	// wready is asserted
+	logic wready_d;
+	always @(posedge clk) begin
+		wready <= ( reset ) ? 1 : ( start ) ? 0 : ( !wready && done ) ? 1 : wready;
+		wready_d <= wready;
+	end
+
+	// Sweep independanr bariables
+	always_ff @(posedge clk) begin
+		if( wready ) begin
+			ind <= 0;
+		end else if( done ) begin
+			ind <= 0;
+		end else begin
+			ind[0] <= ( ind[0] == max_jolts ) ? 0 : ind[0] + 1;
+			ind[1] <= ( ind[0] == max_jolts && ind[1] == max_jolts ) ? 0 : 
+				  ( ind[0] == max_jolts ) ? ind[1] + 1 : ind[1];
+			ind[2] <= ( ind[0] == max_jolts && ind[1] == max_jolts ) ? ind[2] + 1 : ind[2];
+		end
+	end
+
+	/////////////////
+	// Track/Sum Best
+	/////////////////
+	
+	logic [12:0] best;
+	logic [12:0] presses; // solution cost in presses
+	logic        val_sol; // solution is valid
+	always @(posedge clk) begin
+		best <= ( wvalid && wready && wuser == 7 ) ? 13'h1FFF : ( !wready && val_sol && presses < best ) ? presses : best;
+		sum2 <= ( reset ) ? 0 : ( wready && !wready_d ) ? sum2 + best : sum2;
+	end
+
+	/////////////////
+	// 13x10 Solver
+	/////////////////
+	  
+	solve_13x10 i_solve( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
+		.a_in	( buttons ),
+		.b_in	( joltage ),
+		.x_out	(         ),
+		.x_sum	( presses ),
+		.posint	( val_sol ),
+		.nind	( num_ind ),
+		.ind	( ind_in  ) 
+	);
+
+endmodule
 
 
 module aoc_day10 (
@@ -542,13 +680,16 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	logic [20:0][3:0] X, Y;
 	always_comb begin // Flag significant columns
 	   // K == 0 init from inputs
-	   for( yy = 0; yy < 10; yy++ ) begin
+	   for( int yy = 0; yy < 10; yy++ ) begin
 		   A[0][yy][13] = b_in[yy];
 		   for( int xx = 0; xx < 13; xx++ )
 			   A[0][yy][xx] = a_in[yy][xx];
 	   end
 	   // Start in upper left corner
 	   X[0] = 0; Y[0] = 0;
+	   nz = 0;
+	   sig_row = 0;
+	   sig_col = 0;
 	   for( int k = 1; k <= 20; k++ ) begin
 
 		if( k & 1 ) begin // Odd K:
@@ -611,8 +752,8 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 				map_c[xx][yy] = ( S[yy][xx] != 0 ) ? 1'b1 : 1'b0;
 				map_r[yy][xx] = map_c[xx][yy];
 				mul_r[yy][xx] = ( xx == 0 ) ? 0 : map_r[yy][xx-1] | mul_r[yy][xx-1];
+				piv_c[xx][yy] = map_r[yy][xx] & !mul_r[yy][xx];
 				piv_r[yy][xx] = piv_c[xx][yy];
-				piv_c[xx][yy] = map_r[yy][cc] & !mul_r[yy][xx];
 			end
 		end
 	end
@@ -664,7 +805,6 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	day10_div i_div7( .num( sum_prod[7]), .denom( pivot[7] ), .out( row_result[7] ), .neg_frac( neg_frac[7] ) );
 	day10_div i_div8( .num( sum_prod[8]), .denom( pivot[8] ), .out( row_result[8] ), .neg_frac( neg_frac[8] ) );
 	day10_div i_div9( .num( sum_prod[9]), .denom( pivot[9] ), .out( row_result[9] ), .neg_frac( neg_frac[9] ) );
-	assign posint = !|neg_frac; // flag if solution will be positive integers
 	
 	// Create column counters for independant and dependant variables
 	logic [13:0][3:0] ind_count; // counts betwen cols should max at 10
@@ -692,10 +832,10 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	end
 
 	// Output data and flag
-	assign sum_x = V[0]+V[1]+V[2]+V[3]+V[4]+V[5]+V[6]+V[7]+V[8]+V[9]+V[10]+V[11]+V[12];
+	assign x_sum = V[0]+V[1]+V[2]+V[3]+V[4]+V[5]+V[6]+V[7]+V[8]+V[9]+V[10]+V[11]+V[12];
 	assign x_out = V;
 	assign posint = !|neg_frac; 
-	assign nind = ind_cnt[1:0]; // max 3
+	assign nind = ind_count[1:0]; // max 3
 endmodule
 
 // Combinatorial divider Out = num / denom. 
@@ -714,23 +854,26 @@ module day10_div (
 	assign udenom = ( denom[63] ) ? -denom : denom;
 	always_comb begin
 		neg_frac = 0;
-		if( demon == 0 ) begin // divide by zero
+		val = 0;
+		rem = 0;
+		out = 0;
+		if( denom == 0 ) begin // divide by zero
 			out = 0;
 			neg_frac = 0; // not invalid, just a side effect of zero rows
 		end else if( num[63] && !denom[63] || !num[63] && denom[63] ) begin // negative output
 			out = 0;
 			neg_frac = 1;
-		end else if( { 9'h000, num[63:9] } > denom ) begin // too large > 512
+		end else if( { 9'h000, unum[63:9] } >= udenom ) begin // too large > 512
 			out = 0;
 			neg_frac = 1;
 		end else begin // only need 9 rounds max
-			val[8] = { 8'h0, num[63:8] };
-			out[8] = ( val[8] > denom ) ? 1'b1 : 1'b0;
-			rem[8] = ( out[8] ) ? val[8] - denom : val[8];
+			val[8] = { 8'h0, unum[63:8] };
+			out[8] = ( val[8] >= udenom ) ? 1'b1 : 1'b0;
+			rem[8] = ( val[8] >= udenom ) ? val[8] - udenom : val[8];
 			for( int ii = 7; ii >= 0; ii-- ) begin
 				val[ii] = { rem[ii+1][62:0], num[ii] };
-				out[ii] = ( val[ii] > denom ) ? 1'b1 : 1'b0;
-				rem[ii] = ( out[ii] ) ? val[ii] - denom : val[ii];
+				out[ii] = ( val[ii] >= udenom ) ? 1'b1 : 1'b0;
+				rem[ii] = ( val[ii] >= udenom ) ? val[ii] - udenom : val[ii];
 			end
 			neg_frac = ( rem[0] != 0 ) ? 1'b1 : 1'b0;
 		end
