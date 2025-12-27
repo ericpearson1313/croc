@@ -530,9 +530,6 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs using [nind:0] 
 	);
 
-	// format input data into arrays
-
-
 	// Unrolled Gaussian ellimination
 	// 0th stage is input
 	// Odd - Find 1st significant coeff (step and roll)
@@ -669,40 +666,75 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	day10_div i_div9( .num( sum_prod[9]), .denom( pivot[9] ), .out( row_result[9] ), .neg_frac( neg_frac[9] ) );
 	assign posint = !|neg_frac; // flag if solution will be positive integers
 	
-	// Pivot Row results into columns
-
-	// Build V with each element = mux14(  row[0..9], zero, dep[0..2] );
-	// for column xx, 
-	// if col[xx] contains a pivot |piv_c[xx] then v[xx] is reflected result
-	// if col[xx] is all zero, then v[xx] = 0
-	// else V is an its a independant input
-	
-
+	// Create column counters for independant and dependant variables
+	logic [13:0][3:0] ind_count; // counts betwen cols should max at 10
+	logic [13:0][3:0] dep_count; // day10 constrains this to max at 3
+	always_comb begin
+		ind_count[0] = 0;
+		dep_count[0] = 0;
+		for( int xx = 0; xx < 13; xx++ ) begin
+			dep_count[xx+1] = ( |piv_c[xx] ) ? dep_count[xx] + 1 : dep_count[xx];
+			ind_count[xx+1] = ( !|piv_c[xx] && !|map_c[xx] ) ? ind_count[xx] + 1 : ind_count[xx];
+		end
+	end
 
 	logic signed [0:12][8:0] V; // solution X
 	// Prepart to solve by
 	// - inserting known zero's into x
 	// - signalling how many independant variables are needed
 	// - inserting independants into x
-	
+	always_comb begin
+		for( int xx = 12; xx >= 0; xx-- ) begin
+			V[xx] = ( !|map_c[xx] ) ? 0 :   // zero coeff
+				(  |piv_c[xx] ) ? row_result[dep_count[xx]] : // row result
+				               	  ind[ind_count[xx]];  // indpendant input
+		end
+	end
 
 	// Output data and flag
-	assign sum_x = v[0]+v[1]+v[2]+v[3]+v[4]+v[5]+v[6]+v[7]+v[8]+v[9]+v[10]+v[11]+v[12];
+	assign sum_x = V[0]+V[1]+V[2]+V[3]+V[4]+V[5]+V[6]+V[7]+V[8]+V[9]+V[10]+V[11]+V[12];
 	assign x_out = V;
 	assign posint = !|neg_frac; 
-
-
-	
-	
+	assign nind = ind_cnt[1:0]; // max 3
 endmodule
 
+// Combinatorial divider Out = num / denom. 
+// output will be a non negative integer less than 500
+// 0 / 0 = 0 and not invalid
 module day10_div (
-	input logic [63:0] num,
-	input logic [63:0] denom,
+	input logic signed [63:0] num,
+	input logic signed [63:0] denom,
 	output logic [8:0] out,
-	output logic neg_frac
+	output logic neg_frac   // flag if invalid: -ve, fractional, too large
 	);
-	// Out = num / denom. Assert neg_frac if result is neg has remainder 
+
+	logic [63:0] unum, udenom;
+	logic [8:0][63:0] val, rem;
+	assign unum   = ( num[63]   ) ? -num   : num;
+	assign udenom = ( denom[63] ) ? -denom : denom;
+	always_comb begin
+		neg_frac = 0;
+		if( demon == 0 ) begin // divide by zero
+			out = 0;
+			neg_frac = 0; // not invalid, just a side effect of zero rows
+		end else if( num[63] && !denom[63] || !num[63] && denom[63] ) begin // negative output
+			out = 0;
+			neg_frac = 1;
+		end else if( { 9'h000, num[63:9] } > denom ) begin // too large > 512
+			out = 0;
+			neg_frac = 1;
+		end else begin // only need 9 rounds max
+			val[8] = { 8'h0, num[63:8] };
+			out[8] = ( val[8] > denom ) ? 1'b1 : 1'b0;
+			rem[8] = ( out[8] ) ? val[8] - denom : val[8];
+			for( int ii = 7; ii >= 0; ii-- ) begin
+				val[ii] = { rem[ii+1][62:0], num[ii] };
+				out[ii] = ( val[ii] > denom ) ? 1'b1 : 1'b0;
+				rem[ii] = ( out[ii] ) ? val[ii] - denom : val[ii];
+			end
+			neg_frac = ( rem[0] != 0 ) ? 1'b1 : 1'b0;
+		end
+	end
 endmodule
 
 
