@@ -22,7 +22,7 @@ module day10_tb();
                 end
                 reset = 0;
                 $display("Reset done");
-                for( int ii = 0; ii < 2000000; ii++ ) begin
+                for( int ii = 0; ii < 200000000; ii++ ) begin
                         @(negedge clk);
                 end
                 $display("halted dur to clock limit");
