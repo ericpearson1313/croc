@@ -237,7 +237,7 @@ module aoc_day10_gaussian (
 		end else if( wvalid && wready && wuser == 2 ) begin
 			bcnt <= bcnt + 1;
 			for( int yy = 0; yy < 10; yy++ ) begin
-				buttons[yy][bcnt] <= wdata[yy];
+				buttons[yy] <= { buttons[yy][11:0], wdata[yy]};
 			end
 		end
 	end
@@ -252,9 +252,9 @@ module aoc_day10_gaussian (
 			jcnt <= 0;
 			max_jolts <= 0;
 		end else if ( wvalid && wready && wuser == 4 ) begin
-			jcnt <= jcnt + 1;
 			max_jolts <= ( wdata[8:0] > max_jolts ) ? wdata[8:0] : max_jolts;
 			joltage[jcnt] <= wdata[8:0];
+			jcnt <= jcnt + 1;
 		end
 	end
 
@@ -315,16 +315,31 @@ module aoc_day10_gaussian (
 	// 13x10 Solver
 	/////////////////
 	  
-	solve_13x10 i_solve( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
+	logic signed [9:0][13:0][63:0] E; // Eschelon format array
+	gauss_13x10 i_gauss( // Reduce to eschelon format
+		.clk    ( clk     ),
+		.trig   ( !reset && wready && !wready_d ),
 		.a_in	( buttons ),
 		.b_in	( joltage ),
-		.x_out	(         ),
+		.E      ( E       )
+	);
+
+	logic [12:0][8:0] V;
+	//logic signed [12:0][63:0] V;
+	solve_13x10 i_solve( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
+		.S      ( E       ),
+		.x_out	( V       ),
 		.x_sum	( presses ),
 		.posint	( val_sol ),
 		.nind	( num_ind ),
-		.ind	( ind_in  ) 
+		.ind	( ind     ) 
 	);
 
+	always @(negedge clk) begin
+		if( !wready && val_sol )
+		$display("S[solve] = [ %0d %0d %0d %0d %0d | %0d %0d %0d %0d %0d | %0d %0d %0d ] (%b) Presses %0d",
+			V[0],V[1],V[2],V[3],V[4],V[5],V[6],V[7],V[8],V[9],V[10],V[11],V[12], val_sol, presses); 
+	end
 endmodule
 
 
@@ -656,16 +671,14 @@ module aoc_day10 (
 
 endmodule
 
-// synthesizable, combinatorial, solver
-// targets day 10 part 2
-module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
-	input  logic [9: 0][12:0] a_in,	  // A[10][13] fo binary dayat
-	input  logic [9: 0][8: 0] b_in,   // b[10] of target data
-	output logic [12:0][8: 0] x_out,  // x[13] soluion outputs
-	output logic [12:0]       x_sum,  // sum of the x[] array
-	output logic              posint, // flag if x_out are all positive integers
-	output logic [1: 0]   	  nind,	  // num independant variables ranges from 0 to 3
-	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs using [nind:0] 
+// Gausian ellimination of [A|b] a 14x10 array
+// Synthesizable, combinatorial
+module gauss_13x10 (
+	input  logic clk, // debug only
+	input  logic trig, // debug only
+	input  logic [9:0][12:0] a_in,  // A[10][13] fo binary dayat
+	input  logic [9:0][8:0]  b_in,  // b[10] of target data
+	output logic signed [9:0][13:0][63:0] E // Eschelon format array
 	);
 
 	// Unrolled Gaussian ellimination
@@ -674,92 +687,145 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	// Even - Reduce non-zero coeff below significnt to zero
 	// 20th stage will be in eschelon form (upper triangular)
 	//           Stage row  col  signed
-	logic signed [0:20][0:9][0:13][63:0] A;
-	logic [20:0][3:0] sig_row, sig_col;
-	logic [20:0][0:12][9:0] nz;
-	logic [20:0][3:0] X, Y;
-	always_comb begin // Flag significant columns
-	   // K == 0 init from inputs
-	   for( int yy = 0; yy < 10; yy++ ) begin
-		   A[0][yy][13] = b_in[yy];
-		   for( int xx = 0; xx < 13; xx++ )
-			   A[0][yy][xx] = a_in[yy][xx];
-	   end
-	   // Start in upper left corner
-	   X[0] = 0; Y[0] = 0;
-	   nz = 0;
-	   sig_row = 0;
-	   sig_col = 0;
-	   for( int k = 1; k <= 20; k++ ) begin
+	logic signed [10:0][9:0][13:0][63:0] A;
+	logic signed [10:0][9:0][13:0][63:0] B;
+	logic        [10:0]      [3:0] sig_row;
+	logic        [10:0][12:0][9:0] nz;
+	logic        [10:0]      [3:0] X, Y;
+	logic        [10:0]      [3:0] Xa, Ya;
 
-		if( k & 1 ) begin // Odd K:
+	always_comb begin // roll/reduce 
+	   	A = 0;
+	   	B = 0;
+	   	Xa = 0; 
+	   	Ya = 0;
+	   	X = 0; 
+	   	Y = 0;
+	   	sig_row = 0;
+	   	nz = 0;
+	
+	   	// K == 0 init from inputs
+	   	for( int yy = 0; yy < 10; yy++ ) begin
+		   	B[0][yy][13] = b_in[yy];
+		   	for( int xx = 0; xx < 13; xx++ )
+			   	B[0][yy][xx] = a_in[yy][xx];
+	   	end
+
+	   	// Start in upper left corner
+	   	for( int k = 1; k <= 10; k++ ) begin
 
 			// find 1st significant coeff column
 			for( int xx = 0; xx < 13; xx++ ) begin
 				for( int yy = 0; yy < 10; yy++ ) // find sig cells and format for col reduction OR
-					nz[k][xx][yy] = ( A[k-1][yy][xx] != 0 && xx >= X[k-1] && yy >= Y[k-1] ) ? 1'b1 : 1'b0;
+					nz[k][xx][yy] = ( B[k-1][yy][xx] != 0 && xx >= X[k-1] && yy >= Y[k-1] ) ? 1'b1 : 1'b0;
 			end
 			// Update to next sig working column
-			Y[k] = Y[k-1];
-			X[k] =  ( |nz[k][ 0] ) ?  0 : ( |nz[k][ 1] ) ?  1 : ( |nz[k][ 2] ) ?  2 : ( |nz[k][ 3] ) ?  3 :
-				( |nz[k][ 4] ) ?  4 : ( |nz[k][ 5] ) ?  5 : ( |nz[k][ 6] ) ?  6 : ( |nz[k][ 7] ) ?  7 :
-				( |nz[k][ 8] ) ?  8 : ( |nz[k][ 9] ) ?  9 : ( |nz[k][10] ) ? 10 : ( |nz[k][11] ) ? 11 :
-			( |nz[k][12] ) ? 12 : 15;
+			Ya[k] = Y[k-1];
+			Xa[k] =  ( |nz[k][ 0] ) ?  0 : ( |nz[k][ 1] ) ?  1 : ( |nz[k][ 2] ) ?  2 : ( |nz[k][ 3] ) ?  3 :
+				 ( |nz[k][ 4] ) ?  4 : ( |nz[k][ 5] ) ?  5 : ( |nz[k][ 6] ) ?  6 : ( |nz[k][ 7] ) ?  7 :
+				 ( |nz[k][ 8] ) ?  8 : ( |nz[k][ 9] ) ?  9 : ( |nz[k][10] ) ? 10 : ( |nz[k][11] ) ? 11 :
+			         ( |nz[k][12] ) ? 12 : 15;
 			// find sig row in the sig col
-			sig_row[k] = nz[k][X[k]][0] ? 0 : nz[k][X[k]][1] ? 1 : nz[k][X[k]][2] ? 2 :
-				     nz[k][X[k]][3] ? 3 : nz[k][X[k]][4] ? 4 : nz[k][X[k]][5] ? 5 :
-				     nz[k][X[k]][6] ? 6 : nz[k][X[k]][7] ? 7 : nz[k][X[k]][8] ? 8 : 15 ;
-			// barrel shift row into place
-			for( int yy = 0; yy < 10; yy++ ) begin
-				if( yy < Y[k] ) begin
-				  	A[k][yy] = A[k-1][yy]; // not involved, just copy
-				end else if( yy >= Y[k] && yy-Y[k]+sig_row < 10 ) begin
-					A[k][yy] = A[k-1][yy-Y[k]+sig_row[k]];
+			sig_row[k] = nz[k][Xa[k]][9] ? 9 : nz[k][Xa[k]][8] ? 8 : nz[k][Xa[k]][7] ? 7 :
+				     nz[k][Xa[k]][6] ? 6 : nz[k][Xa[k]][5] ? 5 : nz[k][Xa[k]][4] ? 4 :
+				     nz[k][Xa[k]][3] ? 3 : nz[k][Xa[k]][2] ? 2 : nz[k][Xa[k]][1] ? 1 : nz[k][Xa[k]][0] ? 0 : 15 ;
+			// swap row into place (note upgrade to barrel shift
+			if( Xa[k] == 15 || nz[k][Xa[k]][Ya[k]] || sig_row[k] == Ya[k] ) begin
+				A[k] = B[k-1]; // done, or alreay sig pivot
+			end else for( int yy = 0; yy < 10; yy++ ) begin
+				if( yy < Ya[k] ) begin
+				  	A[k][yy] = B[k-1][yy]; // not involved, just copy
+				end else if( yy == Ya[k] ) begin
+					A[k][yy] = B[k-1][sig_row[k]]; // swap
+				end else if( yy == sig_row[k] ) begin
+					A[k][yy] = B[k-1][Ya[k]]; // swap
 				end else begin
-					A[k][yy] = A[k-1][yy+sig_row[k]-10];
+					A[k][yy] = B[k-1][yy]; // copy
 				end
 			end
 
-		end else begin // Even K
-			
-			// Gausion ellimination on even k
-			for( int yy = 0; yy < 9; yy++ ) begin
-				if( yy < Y[k-1] || A[k-1][yy][X[k-1]] == 0 ) begin // above us, or already a zero/reduced
-					A[k][yy] = A[k-1][yy];
+			// Gausion ellimination 
+			for( int yy = 0; yy < 10; yy++ ) begin
+				if( yy <= Ya[k] || Xa[k] == 15 || A[k][yy][Xa[k]] == 0 ) begin // above us, or already a zero/reduced
+					B[k][yy] = A[k][yy];
 				end else for( int xx = 0; xx < 14; xx++ ) begin // reducde
-					A[k][yy][xx] = ( xx <= X[k-1] ) ? 0 : A[k-1][yy][X[k-1]] * A[k-1][0][xx] - A[k-1][0][X[k-1]] * A[k-1][yy][xx];
+					B[k][yy][xx] = ( xx <= Xa[k] ) ? 0 : 
+						       //A[k][yy][Xa[k]] * A[k][Ya[k]][xx] - A[k][Ya[k]][Xa[k]] * A[k][yy][xx];
+						       A[k][Ya[k]][Xa[k]] * A[k][yy][xx] - A[k][yy][Xa[k]] * A[k][Ya[k]][xx];
 				end
 			end
-			X[k] = X[k-1] + 1;
-			Y[k] = X[k-1] + 1;
-	        end // Even
-	    end // k
-	    // A[20] is in eschelon order
-	    // x[2*k
+			X[k] = ( Xa[k] == 15 ) ? 15 : Xa[k] + 1;
+			Y[k] = Ya[k] + 1;
+	    	end // k
 	end // always
+
+	// Dump B matrix's
+	always @(negedge clk) if( trig ) begin
+		for( int k = 10; k <= 10; k++ ) begin
+			if( k > 0 && 0 ) begin
+				$display("A[%0d]=", k );
+				for( int yy = 0; yy < 10; yy++ ) 
+					$display("%3d %3d %3d %3d %3d | %3d %3d %3d %3d %3d | %3d %3d %3d  ||  %5d", 
+						A[k][yy][0], A[k][yy][1], A[k][yy][2], A[k][yy][3],
+						A[k][yy][4], A[k][yy][5], A[k][yy][6], A[k][yy][7],
+						A[k][yy][8], A[k][yy][9], A[k][yy][10], A[k][yy][11],
+						A[k][yy][12], A[k][yy][13] );
+			end
+			$display("B[%0d]=", k );
+			for( int yy = 0; yy < 10; yy++ ) 
+				$display("%3d %3d %3d %3d %3d | %3d %3d %3d %3d %3d | %3d %3d %3d  ||  %5d", 
+					B[k][yy][0], B[k][yy][1], B[k][yy][2], B[k][yy][3],
+					B[k][yy][4], B[k][yy][5], B[k][yy][6], B[k][yy][7],
+					B[k][yy][8], B[k][yy][9], B[k][yy][10], B[k][yy][11],
+					B[k][yy][12], B[k][yy][13] );
+		end
+	end
 	
+
+	// Assign output
+	always_comb 
+		for( int yy = 0; yy < 10; yy++ ) 
+		   	for( int xx = 0; xx < 14; xx++ )
+			   	E[yy][xx] = ( xx < yy ) ? 0 : B[10][yy][xx];
+	
+endmodule
+
+
+
+
+// synthesizable, combinatorial, solver
+// targets day 10 part 2
+module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
+	input logic signed [9:0][13:0][63:0] S, // Eschelon format array to bw solved
+	output logic [12:0][8: 0] x_out,  // x[13] soluion outputs (clipped ints)
+	//output logic signed [12:0][63: 0] x_out,  // x[13] soluion outputs (clipped ints)
+	output logic [12:0]       x_sum,  // sum of the x[] array
+	output logic              posint, // flag if x_out are all positive integers
+	output logic [1: 0]   	  nind,	  // num independant variables ranges from 0 to 3
+	input  logic [2: 0][8: 0] ind  	  // Three independant x inputs using [nind:0] 
+	);
+
 	// Build Solve array & Map out the non-zero rows and columns
-	logic [9:0][13:0][63:0] S; 
 	logic [9:0][12:0] map_r;
 	logic [12:0][9:0] map_c;
 	logic [9:0][12:0] mul_r; // Flags all cells after 1st sig in a row
 	logic [9:0][12:0] piv_r; // Flags flags first non-zero in a row
 	logic [12:0][9:0] piv_c; 
 	always_comb begin
-		for( int yy = 0; yy < 9; yy++ ) begin
-			for( int xx = 0; xx < 12; xx++ ) begin
-				S[yy][xx] = ( xx < yy ) ? 0 : A[20][yy][xx];
+		mul_r = 0;
+		for( int yy = 0; yy < 10; yy++ ) begin
+			for( int xx = 0; xx < 13; xx++ ) begin
 				map_c[xx][yy] = ( S[yy][xx] != 0 ) ? 1'b1 : 1'b0;
 				map_r[yy][xx] = map_c[xx][yy];
-				mul_r[yy][xx] = ( xx == 0 ) ? 0 : map_r[yy][xx-1] | mul_r[yy][xx-1];
-				piv_c[xx][yy] = map_r[yy][xx] & !mul_r[yy][xx];
-				piv_r[yy][xx] = piv_c[xx][yy];
+				mul_r[yy][xx] = (xx==0) ? 0 : map_r[yy][xx-1] | mul_r[yy][xx-1];
+				piv_r[yy][xx] = (xx==0) ? map_r[yy][xx] : map_r[yy][xx] & !(map_r[yy][xx-1] | mul_r[yy][xx-1]);
+				piv_c[xx][yy] = piv_r[yy][xx];
 			end
 		end
 	end
 
 	// calculate right hand side per row (b - sum of products);
-	logic [9:0][63:0] sum_prod;
+	logic signed [9:0][63:0] sum_prod;
 	logic [9:0][63:0] pivot;
 	always_comb begin
 		for( int yy = 9; yy >= 0; yy-- ) begin // bot up loop
@@ -810,15 +876,15 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	logic [13:0][3:0] ind_count; // counts betwen cols should max at 10
 	logic [13:0][3:0] dep_count; // day10 constrains this to max at 3
 	always_comb begin
-		ind_count[0] = 0;
-		dep_count[0] = 0;
+		ind_count = 0;
+		dep_count = 0;
 		for( int xx = 0; xx < 13; xx++ ) begin
 			dep_count[xx+1] = ( |piv_c[xx] ) ? dep_count[xx] + 1 : dep_count[xx];
-			ind_count[xx+1] = ( !|piv_c[xx] && !|map_c[xx] ) ? ind_count[xx] + 1 : ind_count[xx];
+			ind_count[xx+1] = ( !|piv_c[xx] && |map_c[xx] ) ? ind_count[xx] + 1 : ind_count[xx];
 		end
 	end
 
-	logic signed [0:12][8:0] V; // solution X
+	logic signed [12:0][63:0] V; // solution X
 	// Prepart to solve by
 	// - inserting known zero's into x
 	// - signalling how many independant variables are needed
@@ -828,14 +894,15 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 			V[xx] = ( !|map_c[xx] ) ? 0 :   // zero coeff
 				(  |piv_c[xx] ) ? row_result[dep_count[xx]] : // row result
 				               	  ind[ind_count[xx]];  // indpendant input
+			x_out[xx][8:0] = V[xx][8:0]; // all valid solns are pos ints 0 to 511
+			//x_out[xx] = V[xx]; // Debug
 		end
 	end
 
 	// Output data and flag
-	assign x_sum = V[0]+V[1]+V[2]+V[3]+V[4]+V[5]+V[6]+V[7]+V[8]+V[9]+V[10]+V[11]+V[12];
-	assign x_out = V;
+	assign x_sum = x_out[0]+x_out[1]+x_out[2]+x_out[3]+x_out[4]+x_out[5]+x_out[6]+x_out[7]+x_out[8]+x_out[9]+x_out[10]+x_out[11]+x_out[12];
 	assign posint = !|neg_frac; 
-	assign nind = ind_count[1:0]; // max 3
+	assign nind = ind_count[13][1:0]; // max 3
 endmodule
 
 // Combinatorial divider Out = num / denom. 
@@ -860,6 +927,9 @@ module day10_div (
 		if( denom == 0 ) begin // divide by zero
 			out = 0;
 			neg_frac = 0; // not invalid, just a side effect of zero rows
+		end else if( num == 0 ) begin // result is zero no error
+			out = 0;
+			neg_frac = 0; // not invalid even if -ve denom
 		end else if( num[63] && !denom[63] || !num[63] && denom[63] ) begin // negative output
 			out = 0;
 			neg_frac = 1;
@@ -871,7 +941,7 @@ module day10_div (
 			out[8] = ( val[8] >= udenom ) ? 1'b1 : 1'b0;
 			rem[8] = ( val[8] >= udenom ) ? val[8] - udenom : val[8];
 			for( int ii = 7; ii >= 0; ii-- ) begin
-				val[ii] = { rem[ii+1][62:0], num[ii] };
+				val[ii] = { rem[ii+1][62:0], unum[ii] };
 				out[ii] = ( val[ii] >= udenom ) ? 1'b1 : 1'b0;
 				rem[ii] = ( val[ii] >= udenom ) ? val[ii] - udenom : val[ii];
 			end
