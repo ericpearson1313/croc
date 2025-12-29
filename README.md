@@ -22,7 +22,7 @@ The hardware shifts in the button data, and after the final joltage write full s
     - Verilator: cpu 1.706 s on 1 threads; alloced 579 MB
 
 
-## Part 2
+## Day 10 Part 2 Behavioral
 
 Well, I solved it with behvaioral verilog with the following steps
     
@@ -67,6 +67,36 @@ these large integers would result in relatively small integer solutions.
     V[solve] = [ 134 5 10 15 20 | 8 15 1 18 16 | 23 0 0 0 0 ] 0
     min_count 255
 
+Day 10 Part 2 - Synthesizable system verilog
 
-I may call this complete, but I am thinking of how to do it with synthesizable logic. maybe ...
+I took it as a my challenge to build 2 sythesizable combinatorial blocks to 1) perform gaussian elimination on the 14x10 input array [A|b], and 
+2) solve Ax=b using bac propagation. 
+
+      logic [9:0][8:0] joltage;
+      logic [9: 0][12:0] buttons;
+      logic signed [9:0][13:0][63:0] E; // Eschelon format array
+      gauss_13x10 i_gauss( // Gaussian elimination of [A|b] down to eschelon form
+                .a_in   ( buttons ),
+                .b_in   ( joltage ),
+                .E      ( E       )
+        );
+
+	   logic [1:0] num_ind; // number of independant variables (from solver )
+       logic [2:0][8:0] ind;
+       logic [12:0][8:0] V;  // Resultant soluiton vector (positive integers)
+       solve_13x10 i_solve( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
+                .S      ( E       ), // The solution matrix input [A|b] in eschelon format
+                .x_out  ( V       ), // Solution vector of button presses
+                .x_sum  ( presses ), // Sum of button presses within output vector
+                .posint ( val_sol ), // Flag is all positive integers
+                .nind   ( num_ind ), // ouput of number in independant variables as input to sweep
+                .ind    ( ind     ), // independant inputs, bound search based limit based on max joltage
+       );
+ 
+Using these blocks and sweeping the independant variables gives the Day 2 results. It took a bit of optimization for verilator to run efficienty, even so it took about 40 minutes to simulate the full day 10 puzzle. I was relived it got the correct answer. Here's the run result with all 3 results (part 1 synth, part 2 behvior, part 2 synth) shown:
+
+![Day10part2synt](907db88.png)
+
+
+I may call this complete for the AOC purposed. Still alot of cleanup and optimization possible.
 
