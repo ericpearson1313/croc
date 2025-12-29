@@ -825,52 +825,62 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 	end
 
 	// calculate right hand side per row (b - sum of products);
-	logic signed [9:0][63:0] sum_prod;
-	logic [9:0][63:0] pivot;
+	logic signed [12:0][63:0] sum_prod;
+	logic signed [9:0][12:0][63:0] R; // right hand side
+	logic [12:0][63:0] pivot;
 	always_comb begin
+		R = 0;
 		for( int yy = 9; yy >= 0; yy-- ) begin // bot up loop
-			sum_prod[yy] = S[yy][13] -
-				      ((( mul_r[yy][ 1] ) ? S[yy][ 1] * V[ 1] : 0 ) +
-			               (( mul_r[yy][ 2] ) ? S[yy][ 2] * V[ 2] : 0 ) +
-			               (( mul_r[yy][ 3] ) ? S[yy][ 3] * V[ 3] : 0 ) +
-			               (( mul_r[yy][ 4] ) ? S[yy][ 4] * V[ 4] : 0 ) +
-			               (( mul_r[yy][ 5] ) ? S[yy][ 5] * V[ 5] : 0 ) +
-			               (( mul_r[yy][ 6] ) ? S[yy][ 6] * V[ 6] : 0 ) +
-			               (( mul_r[yy][ 7] ) ? S[yy][ 7] * V[ 7] : 0 ) +
-			               (( mul_r[yy][ 8] ) ? S[yy][ 8] * V[ 8] : 0 ) +
-			               (( mul_r[yy][ 9] ) ? S[yy][ 9] * V[ 9] : 0 ) +
-			               (( mul_r[yy][10] ) ? S[yy][10] * V[10] : 0 ) +
-			               (( mul_r[yy][11] ) ? S[yy][11] * V[11] : 0 ) +
-			               (( mul_r[yy][12] ) ? S[yy][12] * V[12] : 0 ));
-			pivot[yy] =    (( piv_r[yy][ 0] ) ? S[yy][ 0] : 0 ) | // Select mux
-			               (( piv_r[yy][ 1] ) ? S[yy][ 1] : 0 ) |
-			               (( piv_r[yy][ 2] ) ? S[yy][ 2] : 0 ) |
-			               (( piv_r[yy][ 3] ) ? S[yy][ 3] : 0 ) |
-			               (( piv_r[yy][ 4] ) ? S[yy][ 4] : 0 ) |
-			               (( piv_r[yy][ 5] ) ? S[yy][ 5] : 0 ) |
-			               (( piv_r[yy][ 6] ) ? S[yy][ 6] : 0 ) |
-			               (( piv_r[yy][ 7] ) ? S[yy][ 7] : 0 ) |
-			               (( piv_r[yy][ 8] ) ? S[yy][ 8] : 0 ) |
-			               (( piv_r[yy][ 9] ) ? S[yy][ 9] : 0 ) |
-			               (( piv_r[yy][10] ) ? S[yy][10] : 0 ) |
-			               (( piv_r[yy][11] ) ? S[yy][11] : 0 ) |
-			               (( piv_r[yy][12] ) ? S[yy][12] : 0 ) ;
+			for( int xx = 12; xx >= 0; xx-- ) begin // right to left
+				if( xx == 12 ) begin
+					R[yy][xx] = S[yy][13];
+				end else if ( xx < yy ) begin // never pivot
+					R[yy][xx] = 0;
+				end else begin // accumulate RHS
+					R[yy][xx] = R[yy][xx+1] - S[yy][xx+1] * V[xx+1];
+				end
+			end
+		end
+		for( int xx = 12; xx >= 0; xx-- ) begin // bot up loop
+			sum_prod[xx] = (( piv_r[ 0][xx] ) ? R[ 0][xx] : 0 ) | // Select mux
+			               (( piv_r[ 1][xx] ) ? R[ 1][xx] : 0 ) |
+			               (( piv_r[ 2][xx] ) ? R[ 2][xx] : 0 ) |
+			               (( piv_r[ 3][xx] ) ? R[ 3][xx] : 0 ) |
+			               (( piv_r[ 4][xx] ) ? R[ 4][xx] : 0 ) |
+			               (( piv_r[ 5][xx] ) ? R[ 5][xx] : 0 ) |
+			               (( piv_r[ 6][xx] ) ? R[ 6][xx] : 0 ) |
+			               (( piv_r[ 7][xx] ) ? R[ 7][xx] : 0 ) |
+			               (( piv_r[ 8][xx] ) ? R[ 8][xx] : 0 ) |
+			               (( piv_r[ 9][xx] ) ? R[ 9][xx] : 0 ) ;
+			pivot[xx] =    (( piv_r[ 0][xx] ) ? S[ 0][xx] : 0 ) | // Select mux
+			               (( piv_r[ 1][xx] ) ? S[ 1][xx] : 0 ) |
+			               (( piv_r[ 2][xx] ) ? S[ 2][xx] : 0 ) |
+			               (( piv_r[ 3][xx] ) ? S[ 3][xx] : 0 ) |
+			               (( piv_r[ 4][xx] ) ? S[ 4][xx] : 0 ) |
+			               (( piv_r[ 5][xx] ) ? S[ 5][xx] : 0 ) |
+			               (( piv_r[ 6][xx] ) ? S[ 6][xx] : 0 ) |
+			               (( piv_r[ 7][xx] ) ? S[ 7][xx] : 0 ) |
+			               (( piv_r[ 8][xx] ) ? S[ 8][xx] : 0 ) |
+			               (( piv_r[ 9][xx] ) ? S[ 9][xx] : 0 ) ;
 		end
 	end
 			
-	// do row divides Vrow = sum_prod / pivot, and check all for neg_frac
-	logic [9:0][8:0] row_result; // output is unsigned 9 bit pos int unless flagged
-	logic [9:0]       neg_frac;	
-	day10_div i_div0( .num( sum_prod[0]), .denom( pivot[0] ), .out( row_result[0] ), .neg_frac( neg_frac[0] ) );
-	day10_div i_div1( .num( sum_prod[1]), .denom( pivot[1] ), .out( row_result[1] ), .neg_frac( neg_frac[1] ) );
-	day10_div i_div2( .num( sum_prod[2]), .denom( pivot[2] ), .out( row_result[2] ), .neg_frac( neg_frac[2] ) );
-	day10_div i_div3( .num( sum_prod[3]), .denom( pivot[3] ), .out( row_result[3] ), .neg_frac( neg_frac[3] ) );
-	day10_div i_div4( .num( sum_prod[4]), .denom( pivot[4] ), .out( row_result[4] ), .neg_frac( neg_frac[4] ) );
-	day10_div i_div5( .num( sum_prod[5]), .denom( pivot[5] ), .out( row_result[5] ), .neg_frac( neg_frac[5] ) );
-	day10_div i_div6( .num( sum_prod[6]), .denom( pivot[6] ), .out( row_result[6] ), .neg_frac( neg_frac[6] ) );
-	day10_div i_div7( .num( sum_prod[7]), .denom( pivot[7] ), .out( row_result[7] ), .neg_frac( neg_frac[7] ) );
-	day10_div i_div8( .num( sum_prod[8]), .denom( pivot[8] ), .out( row_result[8] ), .neg_frac( neg_frac[8] ) );
-	day10_div i_div9( .num( sum_prod[9]), .denom( pivot[9] ), .out( row_result[9] ), .neg_frac( neg_frac[9] ) );
+	// do col divides Vrow = sum_prod / pivot, and check all for neg_frac
+	logic [12:0][8:0] col_result; // output is unsigned 9 bit pos int unless flagged
+	logic [12:0]      neg_frac; // to be masked 
+	day10_div i_div0( .num( sum_prod[0]), .denom( pivot[0] ), .out( col_result[0] ), .neg_frac( neg_frac[0] ) );
+	day10_div i_div1( .num( sum_prod[1]), .denom( pivot[1] ), .out( col_result[1] ), .neg_frac( neg_frac[1] ) );
+	day10_div i_div2( .num( sum_prod[2]), .denom( pivot[2] ), .out( col_result[2] ), .neg_frac( neg_frac[2] ) );
+	day10_div i_div3( .num( sum_prod[3]), .denom( pivot[3] ), .out( col_result[3] ), .neg_frac( neg_frac[3] ) );
+	day10_div i_div4( .num( sum_prod[4]), .denom( pivot[4] ), .out( col_result[4] ), .neg_frac( neg_frac[4] ) );
+	day10_div i_div5( .num( sum_prod[5]), .denom( pivot[5] ), .out( col_result[5] ), .neg_frac( neg_frac[5] ) );
+	day10_div i_div6( .num( sum_prod[6]), .denom( pivot[6] ), .out( col_result[6] ), .neg_frac( neg_frac[6] ) );
+	day10_div i_div7( .num( sum_prod[7]), .denom( pivot[7] ), .out( col_result[7] ), .neg_frac( neg_frac[7] ) );
+	day10_div i_div8( .num( sum_prod[8]), .denom( pivot[8] ), .out( col_result[8] ), .neg_frac( neg_frac[8] ) );
+	day10_div i_div9( .num( sum_prod[9]), .denom( pivot[9] ), .out( col_result[9] ), .neg_frac( neg_frac[9] ) );
+	day10_div i_diva( .num( sum_prod[10]),.denom( pivot[10]), .out( col_result[10]), .neg_frac( neg_frac[10]) );
+	day10_div i_divb( .num( sum_prod[11]),.denom( pivot[11]), .out( col_result[11]), .neg_frac( neg_frac[11]) );
+	day10_div i_divc( .num( sum_prod[12]),.denom( pivot[12]), .out( col_result[12]), .neg_frac( neg_frac[12]) );
 	
 	// Create column counters for independant and dependant variables
 	logic [13:0][3:0] ind_count; // counts betwen cols should max at 10
@@ -884,24 +894,26 @@ module solve_13x10( // Solve for x, in eqn Ax=b, with up to 3 independant inputs
 		end
 	end
 
-	logic signed [12:0][63:0] V; // solution X
 	// Prepart to solve by
 	// - inserting known zero's into x
 	// - signalling how many independant variables are needed
 	// - inserting independants into x
+	logic signed [12:0][63:0] V; // solution X
+	logic [12:0] oflag;
 	always_comb begin
 		for( int xx = 12; xx >= 0; xx-- ) begin
 			V[xx] = ( !|map_c[xx] ) ? 0 :   // zero coeff
-				(  |piv_c[xx] ) ? row_result[dep_count[xx]] : // row result
+				(  |piv_c[xx] ) ? col_result[xx] : // row result
 				               	  ind[ind_count[xx]];  // indpendant input
 			x_out[xx][8:0] = V[xx][8:0]; // all valid solns are pos ints 0 to 511
+			oflag[xx] = ( |piv_c[xx] ) ? neg_frac[xx] : 0; // flag only valid for pivot cols
 			//x_out[xx] = V[xx]; // Debug
 		end
 	end
 
 	// Output data and flag
 	assign x_sum = x_out[0]+x_out[1]+x_out[2]+x_out[3]+x_out[4]+x_out[5]+x_out[6]+x_out[7]+x_out[8]+x_out[9]+x_out[10]+x_out[11]+x_out[12];
-	assign posint = !|neg_frac; 
+	assign posint = !|oflag;
 	assign nind = ind_count[13][1:0]; // max 3
 endmodule
 
