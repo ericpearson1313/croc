@@ -22,7 +22,7 @@ The hardware shifts in the button data, and after the final joltage write full s
     - Verilator: cpu 1.706 s on 1 threads; alloced 579 MB
 
 
-## Day 10 Part 2 Behavioral
+# Day 10 Part 2 Behavioral
 
 Well, I solved it with behvaioral verilog with the following steps
     
@@ -67,7 +67,7 @@ these large integers would result in relatively small integer solutions.
     V[solve] = [ 134 5 10 15 20 | 8 15 1 18 16 | 23 0 0 0 0 ] 0
     min_count 255
 
-Day 10 Part 2 - Synthesizable system verilog
+# Day 10 Part 2 - Synthesizable system verilog
 
 I took it as a my challenge to build 2 sythesizable combinatorial blocks to 1) perform gaussian elimination on the 14x10 input array [A|b], and 
 2) solve Ax=b using bac propagation. 
