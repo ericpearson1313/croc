@@ -13,6 +13,7 @@ of the indicators vs buttons, and a counter to brute force each machines' soluti
 
 The behvioral code parses the puzzle text and writes the data into a port on the solve hardware with user classification depending upon the data type (lights,buttons,joltage)
 The hardware shifts in the button data, and after the final joltage write full search on a range 2^buttons-1 to find cases where the XOR tree matches the desired lights, while keepding track of the lowest button presses for each match and after complation adding the number of presses to the sum.
+	
 	...
     Day 10 Part 1 sum =        517
     Day 10 Part 2 ??? =                  199
